@@ -1,0 +1,9 @@
+[package]
+name = "rust-hqc"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+zeroize = { version = "1.8.2", default-features = false, features = ["derive"] }
+sha3 = { version = "0.11", default-features = false }
+hex-literal = "1.1.0"
