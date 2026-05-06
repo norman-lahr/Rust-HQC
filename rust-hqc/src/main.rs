@@ -15,10 +15,18 @@ pub fn hash_i_ref(seed: &[u8]) -> [u8; 64] {
 
 fn main() {
     use rust_hqc::symmetric::hash_i;
-    println!("Hello, world!");
+
     let seed = b"DEADBEEFDEADBEEFDEADBEEFDEADBEEF";
     let digest = hash_i(seed);
     let digest_ref = hash_i_ref(seed);
     println!("{:x?}", digest);
     println!("{:x?}", digest_ref);
+
+    use rust_hqc::parameters::PARAM_N;
+    use rust_hqc::vector::barrett_reduce;
+
+    let x = 10287698u32;
+    let res = barrett_reduce(x);
+    let res_ref = x % PARAM_N as u32;
+    println!("{} == {} -> {}", res, res_ref, res == res_ref);
 }
