@@ -205,5 +205,41 @@ pub fn vect_sample_fixed_weight2(
     v
 }
 
+/// Generates a random vector of dimension `PARAM_N`.
+///
+/// Generates a random binary vector of dimension `PARAM_N` by reading
+/// random bytes from the XOF and masking off the extra bits in the
+/// last 64-bit word.
+///
+/// # Arguments
+/// * `reader` - Initialized SHAKE256 XOF reader.
+///
+/// # Returns
+/// A random bit-vector of `VEC_N_SIZE_64` 64-bit words.
+pub fn vect_set_random(reader: &mut impl XofReader) -> [u64; VEC_N_SIZE_64] {
+    // Read random bytes safely
+    let mut rand_bytes = [0u8; VEC_N_SIZE_BYTES];
+    reader.read(&mut rand_bytes);
+
+    // Convert bytes to u64 words in little-endian to match C behavior
+    let mut v = [0u64; VEC_N_SIZE_64];
+
+    for (i, chunk) in rand_bytes.chunks_exact(8).enumerate() {
+        v[i] = u64::from_le_bytes(chunk.try_into().unwrap()); // ← always 8 bytes
+    }
+    // Handle remainder once, outside the loop
+    let remainder = VEC_N_SIZE_BYTES % 8;
+    if remainder > 0 {
+        let mut last = [0u8; 8];
+        last[..remainder].copy_from_slice(&rand_bytes[VEC_N_SIZE_BYTES - remainder..]);
+        v[VEC_N_SIZE_64 - 1] = u64::from_le_bytes(last);
+    }
+
+    // Mask off bits beyond PARAM_N in the last word
+    v[VEC_N_SIZE_64 - 1] &= bitmask(PARAM_N, 64);
+
+    v
+}
+
 #[cfg(test)]
 mod tests;

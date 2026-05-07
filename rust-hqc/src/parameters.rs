@@ -1,3 +1,9 @@
+/// Creates a bitmask with `a % size` bits set.
+/// Equivalent to C: `#define BITMASK(a, size) ((1UL << (a % size)) - 1)`
+pub const fn bitmask(a: usize, size: usize) -> u64 {
+    (1u64 << (a % size)) - 1
+}
+
 // -------------------------------------------------------
 // Core scheme parameters
 // -------------------------------------------------------
