@@ -45,6 +45,7 @@ unsafe extern "C" {
 
     fn vect_generate_random_support1(ctx: *mut Shake256IncCtx, support: *mut u32, weight: u16);
     fn vect_generate_random_support2(ctx: *mut Shake256IncCtx, support: *mut u32, weight: u16);
+    fn vect_write_support_to_vector(v: *mut u64, support: *const u32, weight: u16);
 }
 
 /// Safe Rust wrapper around the C `xof_init` function.
@@ -121,6 +122,20 @@ pub fn vect_generate_random_support2_ref(ctx: &mut Shake256IncCtx, weight: usize
     support
 }
 
+/// Safe wrapper around the C `vect_write_support_to_vector` function.
+///
+/// Writes `support` positions into the bit-vector `v`.
+/// Each index in `support` sets a corresponding bit in `v`.
+///
+/// # Arguments
+/// * `v`       - Output bit-vector of `VEC_N_SIZE_64` 64-bit words.
+/// * `support` - Slice of bit indices to set.
+pub fn vect_write_support_to_vector_ref(v: &mut [u64; VEC_N_SIZE_64], support: &[u32]) {
+    unsafe {
+        vect_write_support_to_vector(v.as_mut_ptr(), support.as_ptr(), support.len() as u16);
+    }
+}
+
 #[test]
 fn test_vect_generate_random_support1() {
     let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
@@ -181,4 +196,38 @@ fn test_vect_generate_random_support2() {
         support, support_ref_evil,
         "C and Rust implementations must produce non-identical support"
     )
+}
+
+#[test]
+fn test_vect_write_support_to_vector() {
+    let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
+
+    let mut ctx = crate::symmetric::xof_init(&seed);
+
+    for i in 0..100 {
+        let mut support = crate::vector::vect_generate_random_support1(&mut ctx, PARAM_OMEGA);
+
+        let mut v = [0u64; VEC_N_SIZE_64];
+        let mut v_ref = [0u64; VEC_N_SIZE_64];
+
+        crate::vector::vect_write_support_to_vector(&mut v, &support);
+        vect_write_support_to_vector_ref(&mut v_ref, &support);
+
+        assert_eq!(
+            v, v_ref,
+            "C and Rust must produce identical bit-vectors at iteration {}",
+            i
+        );
+
+        support[10] = support[10].wrapping_neg();
+        let mut v = [0u64; VEC_N_SIZE_64];
+
+        crate::vector::vect_write_support_to_vector(&mut v, &support);
+
+        assert_ne!(
+            v, v_ref,
+            "C and Rust must produce non-identical bit-vectors at iteration {}",
+            i
+        );
+    }
 }
