@@ -7,10 +7,10 @@ use sha3::digest::XofReader;
 /// `0xFFFFFFFF` if `a == b`, `0x00000000` otherwise.
 #[inline]
 pub fn compare_u32(a: u32, b: u32) -> u32 {
-    let diff = a.wrapping_sub(b) | b.wrapping_sub(a);
+    let diff: u32 = a.wrapping_sub(b) | b.wrapping_sub(a);
     // If a == b: diff == 0, MSB of -diff is 0 → result is 0
     // If a != b: diff != 0, MSB of -diff is 1 → result is 0xFFFFFFFF
-    diff.wrapping_neg() >> 31
+    1u32 ^ (diff >> 31)
 }
 
 /// Constant-time Barrett reduction modulo `PARAM_N`.
@@ -204,3 +204,6 @@ pub fn vect_sample_fixed_weight2(
     vect_write_support_to_vector(&mut v, &support);
     v
 }
+
+#[cfg(test)]
+mod tests;

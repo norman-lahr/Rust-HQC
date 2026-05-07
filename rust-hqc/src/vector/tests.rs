@@ -1,0 +1,184 @@
+use super::*;
+
+// -------------------------------------------------------
+// Test Barrett Reduction
+// -------------------------------------------------------
+
+/// Reference implementation using plain modulo for comparison.
+fn barrett_reduce_ref(x: u32) -> u32 {
+    x % (PARAM_N as u32)
+}
+
+#[test]
+fn test_barrett_reduce_sequential() {
+    for x in 0..=(3 * PARAM_N as u32) {
+        assert_eq!(
+            barrett_reduce(x),
+            barrett_reduce_ref(x),
+            "mismatch at x = {}",
+            x
+        );
+    }
+}
+
+// -------------------------------------------------------
+// Test Fixed-weight Vector Generation
+// -------------------------------------------------------
+
+/// typedef struct { uint64_t ctx[26]; } shake256incctx;
+#[repr(C)]
+pub struct Shake256IncCtx {
+    ctx: [u64; 26],
+}
+
+impl Shake256IncCtx {
+    /// Creates a zeroed context, matching C's `= {0}` initialization.
+    pub fn zeroed() -> Self {
+        Self { ctx: [0u64; 26] }
+    }
+}
+
+unsafe extern "C" {
+    fn xof_init(xof_ctx: *mut Shake256IncCtx, seed: *const u8, seed_size: u32);
+
+    fn shake256_inc_squeeze(output: *mut u8, output_size: u32, xof_ctx: *mut Shake256IncCtx);
+
+    fn vect_generate_random_support1(ctx: *mut Shake256IncCtx, support: *mut u32, weight: u16);
+    fn vect_generate_random_support2(ctx: *mut Shake256IncCtx, support: *mut u32, weight: u16);
+}
+
+/// Safe Rust wrapper around the C `xof_init` function.
+///
+/// # Arguments
+/// * `seed` - Input seed to initialize the XOF context with.
+///
+/// # Returns
+/// An initialized `Shake256IncCtx` ready for squeezing.
+pub fn xof_init_ref(seed: &[u8]) -> Shake256IncCtx {
+    let mut ctx = Shake256IncCtx::zeroed();
+    unsafe {
+        xof_init(
+            &mut ctx as *mut Shake256IncCtx,
+            seed.as_ptr(),
+            seed.len() as u32,
+        );
+    }
+    ctx
+}
+
+/// Safe wrapper to squeeze bytes from an initialized context.
+///
+/// # Arguments
+/// * `ctx`    - Previously initialized `Shake256IncCtx`.
+/// * `output` - Buffer to write squeezed bytes into.
+pub fn xof_squeeze(ctx: &mut Shake256IncCtx, output: &mut [u8]) {
+    unsafe {
+        shake256_inc_squeeze(
+            output.as_mut_ptr(),
+            output.len() as u32,
+            ctx as *mut Shake256IncCtx,
+        );
+    }
+}
+
+/// Safe wrapper around the C `vect_generate_random_support1` function.
+///
+/// # Arguments
+/// * `ctx`    - Previously initialized `Shake256IncCtx`.
+/// * `weight` - Desired Hamming weight.
+///
+/// # Returns
+/// A `Vec<u32>` of `weight` unique indices in `[0, PARAM_N)`.
+pub fn vect_generate_random_support1_ref(ctx: &mut Shake256IncCtx, weight: usize) -> Vec<u32> {
+    let mut support = vec![0u32; weight];
+    unsafe {
+        vect_generate_random_support1(
+            ctx as *mut Shake256IncCtx,
+            support.as_mut_ptr(),
+            weight as u16,
+        );
+    }
+    support
+}
+
+/// Safe wrapper around the C `vect_generate_random_support1` function.
+///
+/// # Arguments
+/// * `ctx`    - Previously initialized `Shake256IncCtx`.
+/// * `weight` - Desired Hamming weight.
+///
+/// # Returns
+/// A `Vec<u32>` of `weight` unique indices in `[0, PARAM_N)`.
+pub fn vect_generate_random_support2_ref(ctx: &mut Shake256IncCtx, weight: usize) -> Vec<u32> {
+    let mut support = vec![0u32; weight];
+    unsafe {
+        vect_generate_random_support2(
+            ctx as *mut Shake256IncCtx,
+            support.as_mut_ptr(),
+            weight as u16,
+        );
+    }
+    support
+}
+
+#[test]
+fn test_vect_generate_random_support1() {
+    let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
+    let seed_evil: [u8; SEED_BYTES] = b"1ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
+
+    let mut ctx = crate::symmetric::xof_init(&seed);
+    let mut ctx_ref = xof_init_ref(&seed);
+
+    for i in 0..100 {
+        let support = crate::vector::vect_generate_random_support1(&mut ctx, PARAM_OMEGA);
+        let support_ref = vect_generate_random_support1_ref(&mut ctx_ref, PARAM_OMEGA);
+
+        assert_eq!(
+            support, support_ref,
+            "C and Rust implementations must produce identical support. Failed at i={}",
+            i
+        );
+    }
+
+    let mut ctx = crate::symmetric::xof_init(&seed);
+    let mut ctx_ref_evil = xof_init_ref(&seed_evil);
+
+    let support = crate::vector::vect_generate_random_support1(&mut ctx, PARAM_OMEGA);
+    let support_ref_evil = vect_generate_random_support1_ref(&mut ctx_ref_evil, PARAM_OMEGA);
+
+    assert_ne!(
+        support, support_ref_evil,
+        "C and Rust implementations must produce non-identical support"
+    )
+}
+
+#[test]
+fn test_vect_generate_random_support2() {
+    let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
+    let seed_evil: [u8; SEED_BYTES] = b"1ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
+
+    let mut ctx = crate::symmetric::xof_init(&seed);
+    let mut ctx_ref = xof_init_ref(&seed);
+
+    for i in 0..100 {
+        let support = crate::vector::vect_generate_random_support2(&mut ctx, PARAM_OMEGA);
+        let support_ref = vect_generate_random_support2_ref(&mut ctx_ref, PARAM_OMEGA);
+
+        assert_eq!(
+            support, support_ref,
+            "C and Rust implementations must produce identical support. Failed at i={}",
+            i
+        );
+    }
+
+    let mut ctx = crate::symmetric::xof_init(&seed);
+    let mut ctx_ref_evil = xof_init_ref(&seed_evil);
+
+    let support = crate::vector::vect_generate_random_support2(&mut ctx, PARAM_OMEGA);
+    let support_ref_evil = vect_generate_random_support2_ref(&mut ctx_ref_evil, PARAM_OMEGA);
+
+    assert_ne!(
+        support, support_ref_evil,
+        "C and Rust implementations must produce non-identical support"
+    )
+}
