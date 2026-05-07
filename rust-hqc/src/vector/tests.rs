@@ -46,6 +46,8 @@ unsafe extern "C" {
     fn vect_generate_random_support1(ctx: *mut Shake256IncCtx, support: *mut u32, weight: u16);
     fn vect_generate_random_support2(ctx: *mut Shake256IncCtx, support: *mut u32, weight: u16);
     fn vect_write_support_to_vector(v: *mut u64, support: *const u32, weight: u16);
+    fn vect_sample_fixed_weight1(ctx: *mut Shake256IncCtx, v: *mut u64, weight: u16);
+    fn vect_sample_fixed_weight2(ctx: *mut Shake256IncCtx, v: *mut u64, weight: u16);
 }
 
 /// Safe Rust wrapper around the C `xof_init` function.
@@ -134,6 +136,52 @@ pub fn vect_write_support_to_vector_ref(v: &mut [u64; VEC_N_SIZE_64], support: &
     unsafe {
         vect_write_support_to_vector(v.as_mut_ptr(), support.as_ptr(), support.len() as u16);
     }
+}
+
+/// Safe wrapper around the C `vect_sample_fixed_weight1` function.
+///
+/// Generates a random binary vector of fixed Hamming weight.
+/// Used exclusively during **key generation** to generate vectors **x** and **y**.
+///
+/// # Arguments
+/// * `ctx`    - Previously initialized `Shake256IncCtx`.
+/// * `weight` - Desired Hamming weight.
+///
+/// # Returns
+/// A bit-vector of `VEC_N_SIZE_64` 64-bit words with exactly `weight` bits set.
+pub fn vect_sample_fixed_weight1_ref(
+    ctx: &mut Shake256IncCtx,
+    weight: usize,
+) -> [u64; VEC_N_SIZE_64] {
+    let mut v = [0u64; VEC_N_SIZE_64];
+    unsafe {
+        vect_sample_fixed_weight1(ctx as *mut Shake256IncCtx, v.as_mut_ptr(), weight as u16);
+    }
+    v
+}
+
+/// Safe wrapper around the C `vect_sample_fixed_weight2` function.
+///
+/// Generates a random binary vector of fixed Hamming weight.
+///
+/// Implementation of Algorithm 5 in <https://eprint.iacr.org/2021/1631.pdf>
+///
+/// Used exclusively during **encryption** to generate vectors **r1**, **r2**, and **e**.
+/// # Arguments
+/// * `ctx`    - Previously initialized `Shake256IncCtx`.
+/// * `weight` - Desired Hamming weight.
+///
+/// # Returns
+/// A bit-vector of `VEC_N_SIZE_64` 64-bit words with exactly `weight` bits set.
+pub fn vect_sample_fixed_weight2_ref(
+    ctx: &mut Shake256IncCtx,
+    weight: usize,
+) -> [u64; VEC_N_SIZE_64] {
+    let mut v = [0u64; VEC_N_SIZE_64];
+    unsafe {
+        vect_sample_fixed_weight2(ctx as *mut Shake256IncCtx, v.as_mut_ptr(), weight as u16);
+    }
+    v
 }
 
 #[test]
@@ -227,6 +275,44 @@ fn test_vect_write_support_to_vector() {
         assert_ne!(
             v, v_ref,
             "C and Rust must produce non-identical bit-vectors at iteration {}",
+            i
+        );
+    }
+}
+
+#[test]
+fn test_vect_sample_fixed_weight1() {
+    let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
+
+    let mut ctx = crate::symmetric::xof_init(&seed);
+    let mut ctx_ref = xof_init_ref(&seed);
+
+    for i in 0..100 {
+        let v = crate::vector::vect_sample_fixed_weight1(&mut ctx, PARAM_OMEGA);
+        let v_ref = crate::vector::tests::vect_sample_fixed_weight1_ref(&mut ctx_ref, PARAM_OMEGA);
+
+        assert_eq!(
+            v, v_ref,
+            "C and Rust must produce identical bit-vectors at iteration {}",
+            i
+        );
+    }
+}
+
+#[test]
+fn test_vect_sample_fixed_weight2() {
+    let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
+
+    let mut ctx = crate::symmetric::xof_init(&seed);
+    let mut ctx_ref = xof_init_ref(&seed);
+
+    for i in 0..100 {
+        let v = crate::vector::vect_sample_fixed_weight2(&mut ctx, PARAM_OMEGA);
+        let v_ref = crate::vector::tests::vect_sample_fixed_weight2_ref(&mut ctx_ref, PARAM_OMEGA);
+
+        assert_eq!(
+            v, v_ref,
+            "C and Rust must produce identical bit-vectors at iteration {}",
             i
         );
     }
