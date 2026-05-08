@@ -241,5 +241,28 @@ pub fn vect_set_random(reader: &mut impl XofReader) -> [u64; VEC_N_SIZE_64] {
     v
 }
 
+/// Adds two vectors (XOR operation).
+///
+/// # Arguments
+/// * `v1`   - First input vector.
+/// * `v2`   - Second input vector.
+/// * `size` - Number of 64-bit words to process.
+///
+/// # Returns
+/// A new vector of `size` 64-bit words with `v1[i] ^ v2[i]`.
+pub fn vect_add(v1: &[u64], v2: &[u64], size: usize) -> Vec<u64> {
+    v1.iter()
+        .zip(v2.iter())
+        .take(size)
+        .map(|(a, b)| a ^ b)
+        .collect()
+}
+
+pub fn vect_add_into(o: &mut [u64], v1: &[u64], v2: &[u64], size: usize) {
+    for i in 0..size {
+        o[i] = v1[i] ^ v2[i];
+    }
+}
+
 #[cfg(test)]
 mod tests;

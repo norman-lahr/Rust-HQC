@@ -49,6 +49,7 @@ unsafe extern "C" {
     fn vect_sample_fixed_weight1(ctx: *mut Shake256IncCtx, v: *mut u64, weight: u16);
     fn vect_sample_fixed_weight2(ctx: *mut Shake256IncCtx, v: *mut u64, weight: u16);
     fn vect_set_random(ctx: *mut Shake256IncCtx, v: *mut u64);
+    fn vect_add(o: *mut u64, v1: *const u64, v2: *const u64, size: u32);
 }
 
 /// Safe Rust wrapper around the C `xof_init` function.
@@ -183,6 +184,24 @@ pub fn vect_sample_fixed_weight2_ref(
         vect_sample_fixed_weight2(ctx as *mut Shake256IncCtx, v.as_mut_ptr(), weight as u16);
     }
     v
+}
+
+/// Safe wrapper around the C `vect_add` function.
+///
+/// Adds two vectors using XOR and writes the result into `o`.
+///
+/// # Arguments
+/// * `o`    - Output vector.
+/// * `v1`   - First input vector.
+/// * `v2`   - Second input vector.
+/// * `size` - Number of 64-bit words to process.
+pub fn vect_add_ref(o: &mut [u64], v1: &[u64], v2: &[u64], size: usize) {
+    assert!(o.len() >= size, "output buffer too small");
+    assert!(v1.len() >= size, "v1 buffer too small");
+    assert!(v2.len() >= size, "v2 buffer too small");
+    unsafe {
+        vect_add(o.as_mut_ptr(), v1.as_ptr(), v2.as_ptr(), size as u32);
+    }
 }
 
 /// Safe wrapper around the C `vect_set_random` function.
@@ -353,4 +372,91 @@ fn test_vect_set_random() {
             i
         );
     }
+}
+
+#[test]
+fn test_vect_add() {
+    const TEST_ROUNDS: u64 = 100;
+    let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
+    let mut ctx1 = crate::symmetric::xof_init(&seed);
+
+    for i in 0..TEST_ROUNDS {
+        let v1 = crate::vector::vect_set_random(&mut ctx1);
+        let v2 = crate::vector::vect_set_random(&mut ctx1);
+
+        let mut o_proc = vec![0u64; VEC_N_SIZE_64];
+        let mut o_ref = vec![0u64; VEC_N_SIZE_64];
+
+        let o = crate::vector::vect_add(&v1, &v2, VEC_N_SIZE_64);
+        crate::vector::vect_add_into(&mut o_proc, &v1, &v2, VEC_N_SIZE_64);
+        vect_add_ref(&mut o_ref, &v1, &v2, VEC_N_SIZE_64);
+
+        assert_eq!(o, o_ref, "Rust and C must match at iteration {}", i);
+        assert_eq!(o_proc, o_ref, "Rust and C must match at iteration {}", i);
+    }
+}
+
+#[test]
+fn test_vect_add_perf_comparison() {
+    const TEST_ROUNDS: u64 = 100;
+    let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
+    let mut ctx1 = crate::symmetric::xof_init(&seed);
+
+    let mut pre;
+    let mut post;
+
+    let mut cycles_rust = 0;
+    let mut cycles_rust_proc = 0;
+    let mut cycles_c = 0;
+
+    for _i in 0..TEST_ROUNDS {
+        let v1 = crate::vector::vect_set_random(&mut ctx1);
+        let v2 = crate::vector::vect_set_random(&mut ctx1);
+        let mut o_ref = vec![0u64; VEC_N_SIZE_64];
+
+        unsafe {
+            pre = core::arch::x86_64::_rdtsc();
+        }
+        vect_add_ref(&mut o_ref, &v1, &v2, VEC_N_SIZE_64);
+        unsafe {
+            post = core::arch::x86_64::_rdtsc();
+        }
+
+        cycles_c += post - pre;
+    }
+    for _i in 0..TEST_ROUNDS {
+        let v1 = crate::vector::vect_set_random(&mut ctx1);
+        let v2 = crate::vector::vect_set_random(&mut ctx1);
+        let _o;
+        unsafe {
+            pre = core::arch::x86_64::_rdtsc();
+        }
+        _o = crate::vector::vect_add(&v1, &v2, VEC_N_SIZE_64);
+        unsafe {
+            post = core::arch::x86_64::_rdtsc();
+        }
+        cycles_rust += post - pre;
+    }
+    for _i in 0..TEST_ROUNDS {
+        let v1 = crate::vector::vect_set_random(&mut ctx1);
+        let v2 = crate::vector::vect_set_random(&mut ctx1);
+        let mut o_proc = vec![0u64; VEC_N_SIZE_64];
+
+        unsafe {
+            pre = core::arch::x86_64::_rdtsc();
+        }
+        crate::vector::vect_add_into(&mut o_proc, &v1, &v2, VEC_N_SIZE_64);
+        unsafe {
+            post = core::arch::x86_64::_rdtsc();
+        }
+
+        cycles_rust_proc += post - pre;
+    }
+
+    println!(
+        "Mean of measured cycles: {} (Rust Function) vs. {} (Rust Procedure) vs. {} (C Reference)",
+        cycles_rust_proc / TEST_ROUNDS,
+        cycles_rust / TEST_ROUNDS,
+        cycles_c / TEST_ROUNDS
+    );
 }
