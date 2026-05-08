@@ -51,6 +51,7 @@ unsafe extern "C" {
     fn vect_set_random(ctx: *mut Shake256IncCtx, v: *mut u64);
     fn vect_add(o: *mut u64, v1: *const u64, v2: *const u64, size: u32);
     fn vect_compare(v1: *const u8, v2: *const u8, size: u32) -> u8;
+    fn vect_truncate(v: *mut u64);
 }
 
 /// Safe Rust wrapper around the C `xof_init` function.
@@ -236,6 +237,18 @@ pub fn vect_set_random_ref(ctx: &mut Shake256IncCtx) -> [u64; VEC_N_SIZE_64] {
 pub fn vect_compare_ref(v1: &[u8], v2: &[u8]) -> u8 {
     assert_eq!(v1.len(), v2.len(), "vectors must have equal length");
     unsafe { vect_compare(v1.as_ptr(), v2.as_ptr(), v1.len() as u32) }
+}
+
+/// Safe wrapper around the C `vect_truncate` function.
+///
+/// Truncates a bit-vector in-place to `PARAM_N1N2` bits.
+///
+/// # Arguments
+/// * `v` - Bit-vector of `VEC_N_SIZE_64` 64-bit words to truncate.
+pub fn vect_truncate_ref(v: &mut [u64; VEC_N_SIZE_64]) {
+    unsafe {
+        vect_truncate(v.as_mut_ptr());
+    }
 }
 
 #[test]
@@ -498,5 +511,23 @@ fn test_vect_compare() {
             "Rust and C must agree at iteration {}",
             i
         );
+    }
+}
+
+#[test]
+fn test_vect_truncate() {
+    const TEST_ROUNDS: u64 = 100;
+    let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
+    let mut ctx1 = crate::symmetric::xof_init(&seed);
+    let mut ctx2 = crate::symmetric::xof_init(&seed);
+
+    for i in 0..TEST_ROUNDS {
+        let mut v = crate::vector::vect_set_random(&mut ctx1);
+        let mut v_ref = crate::vector::vect_set_random(&mut ctx2);
+
+        crate::vector::vect_truncate(&mut v);
+        vect_truncate_ref(&mut v_ref);
+
+        assert_eq!(v, v_ref, "Rust and C must match at iteration {}", i);
     }
 }

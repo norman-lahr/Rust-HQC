@@ -294,5 +294,28 @@ pub fn vect_compare(v1: &[u8], v2: &[u8]) -> u8 {
     ((r - 1) >> 8) as u8
 }
 
+/// Truncates a bit-vector in-place to `PARAM_N1N2` bits,
+/// zeroing out all bits beyond that.
+///
+/// # Arguments
+/// * `v` - Bit-vector of `VEC_N_SIZE_64` 64-bit words to truncate.
+pub fn vect_truncate(v: &mut [u64; VEC_N_SIZE_64]) {
+    let new_full_words = PARAM_N1N2 / 64;
+    let remaining_bits = PARAM_N1N2 % 64;
+
+    // Mask the partial word at the truncation boundary
+    let mut first_zero = new_full_words;
+    if remaining_bits > 0 {
+        let mask = (1u64 << remaining_bits) - 1;
+        v[new_full_words] &= mask;
+        first_zero = new_full_words + 1; // keep the partial word
+    }
+
+    // Zero out all words beyond the truncation point
+    for i in first_zero..VEC_N_SIZE_64 {
+        v[i] = 0;
+    }
+}
+
 #[cfg(test)]
 mod tests;
