@@ -50,6 +50,7 @@ unsafe extern "C" {
     fn vect_sample_fixed_weight2(ctx: *mut Shake256IncCtx, v: *mut u64, weight: u16);
     fn vect_set_random(ctx: *mut Shake256IncCtx, v: *mut u64);
     fn vect_add(o: *mut u64, v1: *const u64, v2: *const u64, size: u32);
+    fn vect_compare(v1: *const u8, v2: *const u8, size: u32) -> u8;
 }
 
 /// Safe Rust wrapper around the C `xof_init` function.
@@ -222,6 +223,21 @@ pub fn vect_set_random_ref(ctx: &mut Shake256IncCtx) -> [u64; VEC_N_SIZE_64] {
     v
 }
 
+/// Safe wrapper around the C `vect_compare` function.
+///
+/// Compares two vectors in constant time.
+///
+/// # Arguments
+/// * `v1` - First input vector.
+/// * `v2` - Second input vector.
+///
+/// # Returns
+/// `0` if the vectors are equal, `1` otherwise.
+pub fn vect_compare_ref(v1: &[u8], v2: &[u8]) -> u8 {
+    assert_eq!(v1.len(), v2.len(), "vectors must have equal length");
+    unsafe { vect_compare(v1.as_ptr(), v2.as_ptr(), v1.len() as u32) }
+}
+
 #[test]
 fn test_vect_generate_random_support1() {
     let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
@@ -388,7 +404,7 @@ fn test_vect_add() {
         let mut o_ref = vec![0u64; VEC_N_SIZE_64];
 
         let o = crate::vector::vect_add(&v1, &v2, VEC_N_SIZE_64);
-        crate::vector::vect_add_into(&mut o_proc, &v1, &v2, VEC_N_SIZE_64);
+        crate::vector::vect_add_into(&mut o_proc, &v1, &v2);
         vect_add_ref(&mut o_ref, &v1, &v2, VEC_N_SIZE_64);
 
         assert_eq!(o, o_ref, "Rust and C must match at iteration {}", i);
@@ -445,7 +461,7 @@ fn test_vect_add_perf_comparison() {
         unsafe {
             pre = core::arch::x86_64::_rdtsc();
         }
-        crate::vector::vect_add_into(&mut o_proc, &v1, &v2, VEC_N_SIZE_64);
+        crate::vector::vect_add_into(&mut o_proc, &v1, &v2);
         unsafe {
             post = core::arch::x86_64::_rdtsc();
         }
@@ -459,4 +475,28 @@ fn test_vect_add_perf_comparison() {
         cycles_rust / TEST_ROUNDS,
         cycles_c / TEST_ROUNDS
     );
+}
+
+#[test]
+fn test_vect_compare() {
+    const TEST_ROUNDS: u64 = 100;
+    let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
+    let mut ctx1 = crate::symmetric::xof_init(&seed);
+
+    for i in 0..TEST_ROUNDS {
+        let mut v1 = vec![0u8; VEC_N_SIZE_BYTES];
+        let mut v2 = vec![0u8; VEC_N_SIZE_BYTES];
+        ctx1.read(&mut v1);
+        ctx1.read(&mut v2);
+        if v1[0] % 2 == 0 {
+            v1 = v2.clone();
+            assert_eq!(v1, v2);
+        }
+        assert_eq!(
+            crate::vector::vect_compare(&v1, &v2),
+            vect_compare_ref(&v1, &v2),
+            "Rust and C must agree at iteration {}",
+            i
+        );
+    }
 }

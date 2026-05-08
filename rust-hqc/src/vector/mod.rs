@@ -258,10 +258,40 @@ pub fn vect_add(v1: &[u64], v2: &[u64], size: usize) -> Vec<u64> {
         .collect()
 }
 
-pub fn vect_add_into(o: &mut [u64], v1: &[u64], v2: &[u64], size: usize) {
-    for i in 0..size {
+/// Adds two vectors (XOR operation) as a procedure.
+///
+/// # Arguments
+/// * `o`    - Output vector.
+/// * `v1`   - First input vector.
+/// * `v2`   - Second input vector.
+/// * `size` - Number of 64-bit words to process.
+///
+/// # Returns
+/// A new vector of `size` 64-bit words with `v1[i] ^ v2[i]`.
+pub fn vect_add_into(o: &mut [u64], v1: &[u64], v2: &[u64]) {
+    assert_eq!(v1.len(), v2.len(), "vectors must have equal length");
+    for i in 0..v1.len() {
         o[i] = v1[i] ^ v2[i];
     }
+}
+
+/// Compares two vectors in constant time.
+///
+/// Function borrowed from liboqs.
+///
+/// # Arguments
+/// * `v1` - First input vector.
+/// * `v2` - Second input vector.
+///
+/// # Returns
+/// `0` if the vectors are equal, `1` otherwise.
+pub fn vect_compare(v1: &[u8], v2: &[u8]) -> u8 {
+    assert_eq!(v1.len(), v2.len(), "vectors must have equal length");
+    let mut r: u16 = 0x0100;
+    for i in 0..v1.len() {
+        r |= (v1[i] ^ v2[i]) as u16;
+    }
+    ((r - 1) >> 8) as u8
 }
 
 #[cfg(test)]
