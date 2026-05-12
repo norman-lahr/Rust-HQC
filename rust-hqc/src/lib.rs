@@ -1,10 +1,11 @@
+pub mod code;
+pub mod gf2x;
 pub mod parameters;
+mod pke;
 pub mod symmetric;
 mod types;
-// mod kem;
-pub mod gf2x;
-mod pke;
 pub mod vector;
+// mod kem;
 // mod gf;
 // mod reed_muller;
 // mod reed_solomon;
