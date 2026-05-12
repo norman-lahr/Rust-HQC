@@ -484,8 +484,8 @@ fn test_vect_add_perf_comparison() {
 
     println!(
         "Mean of measured cycles: {} (Rust Function) vs. {} (Rust Procedure) vs. {} (C Reference)",
-        cycles_rust_proc / TEST_ROUNDS,
         cycles_rust / TEST_ROUNDS,
+        cycles_rust_proc / TEST_ROUNDS,
         cycles_c / TEST_ROUNDS
     );
 }
