@@ -10,3 +10,9 @@ hex-literal = "1.1.0"
 
 # [profile.test]
 # inherits = "release"
+
+[features]
+hqc-1 = []
+hqc-3 = []
+hqc-5 = []
+default = ["hqc-1"]
