@@ -2,6 +2,7 @@ pub mod parameters;
 pub mod symmetric;
 mod types;
 // mod kem;
+pub mod gf2x;
 mod pke;
 pub mod vector;
 // mod gf;
