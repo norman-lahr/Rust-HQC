@@ -113,3 +113,29 @@ pub fn encode(message: i32) -> RmCodeword {
 
     word
 }
+
+/// Performs the Hadamard transform of `src`, storing the result in `dst`.
+///
+/// # Arguments
+/// * `src` - Input expanded codeword — overwritten during computation.
+/// * `dst` - Output expanded codeword — contains result after transform.
+pub fn hadamard(src: &mut RmExpandedCdw, dst: &mut RmExpandedCdw) {
+    // Track which buffer is "current input" and "current output"
+    // by copying after each pass — slightly less efficient but no unsafe
+    let mut bufs: [RmExpandedCdw; 2] = [*src, [0i16; 128]];
+    let mut cur = 0usize; // index of current input buffer
+
+    for _pass in 0..7 {
+        let next = 1 - cur;
+        for i in 0..64usize {
+            let a = bufs[cur][2 * i];
+            let b = bufs[cur][2 * i + 1];
+            bufs[next][i] = a.wrapping_add(b);
+            bufs[next][i + 64] = a.wrapping_sub(b);
+        }
+        cur = next;
+    }
+
+    // After 7 passes (odd), result is in bufs[1] = dst
+    *dst = bufs[cur];
+}

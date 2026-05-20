@@ -1,9 +1,10 @@
-use crate::code::reed_muller::RmCodeword;
+use crate::code::reed_muller::{RmCodeword, RmExpandedCdw};
 use rand::prelude::*;
 use rand::{rngs::StdRng, SeedableRng};
 
 unsafe extern "C" {
     fn encode(word: *mut RmCodeword, message: i32);
+    fn hadamard(src: *mut RmExpandedCdw, dst: *mut RmExpandedCdw);
 }
 
 /// Safe wrapper around the C `encode` function.
@@ -13,6 +14,13 @@ pub fn encode_ref(message: i32) -> RmCodeword {
         encode(&mut word as *mut RmCodeword, message);
     }
     word
+}
+
+/// Safe wrapper around the C `hadamard` function.
+pub fn hadamard_ref(src: &mut RmExpandedCdw, dst: &mut RmExpandedCdw) {
+    unsafe {
+        hadamard(src as *mut RmExpandedCdw, dst as *mut RmExpandedCdw);
+    }
 }
 
 #[test]
@@ -29,4 +37,24 @@ fn test_rm_encode() {
             msg
         );
     }
+}
+
+#[test]
+fn test_hadamard() {
+    let mut src = [0i16; 128];
+    let mut src_ref = [0i16; 128];
+    for i in 0..128 {
+        src[i] = i as i16;
+        src_ref[i] = i as i16;
+    }
+    let mut dst = [0i16; 128];
+    let mut dst_ref = [0i16; 128];
+
+    crate::code::reed_muller::hadamard(&mut src, &mut dst);
+    hadamard_ref(&mut src_ref, &mut dst_ref);
+
+    assert_eq!(
+        dst, dst_ref,
+        "Rust and C implementations must produce identical results"
+    );
 }
