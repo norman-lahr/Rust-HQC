@@ -1,10 +1,11 @@
-use crate::code::reed_muller::{RmCodeword, RmExpandedCdw};
+use crate::code::reed_muller::{RmCodeword, RmExpandedCdw, MULTIPLICITY};
 use rand::prelude::*;
 use rand::{rngs::StdRng, SeedableRng};
 
 unsafe extern "C" {
     fn encode(word: *mut RmCodeword, message: i32);
     fn hadamard(src: *mut RmExpandedCdw, dst: *mut RmExpandedCdw);
+    fn expand_and_sum(dest: *mut RmExpandedCdw, src: *const RmCodeword);
 }
 
 /// Safe wrapper around the C `encode` function.
@@ -20,6 +21,13 @@ pub fn encode_ref(message: i32) -> RmCodeword {
 pub fn hadamard_ref(src: &mut RmExpandedCdw, dst: &mut RmExpandedCdw) {
     unsafe {
         hadamard(src as *mut RmExpandedCdw, dst as *mut RmExpandedCdw);
+    }
+}
+
+/// Safe wrapper around the C `expand_and_sum` function.
+pub fn expand_and_sum_ref(dest: &mut RmExpandedCdw, src: &[RmCodeword; MULTIPLICITY]) {
+    unsafe {
+        expand_and_sum(dest as *mut RmExpandedCdw, src.as_ptr());
     }
 }
 
@@ -55,6 +63,24 @@ fn test_hadamard() {
 
     assert_eq!(
         dst, dst_ref,
+        "Rust and C implementations must produce identical results"
+    );
+}
+
+#[test]
+fn test_expand_and_sum() {
+    let mut src = [RmCodeword::zeroed(); MULTIPLICITY];
+    for i in 0..MULTIPLICITY {
+        src[i].u32 = [0xDEADBEEFu32; 4];
+    }
+    let mut dest = [0i16; 128];
+    let mut dest_ref = [0i16; 128];
+
+    crate::code::reed_muller::expand_and_sum(&mut dest, &src);
+    expand_and_sum_ref(&mut dest_ref, &src);
+
+    assert_eq!(
+        dest, dest_ref,
         "Rust and C implementations must produce identical results"
     );
 }

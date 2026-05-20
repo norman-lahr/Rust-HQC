@@ -139,3 +139,34 @@ pub fn hadamard(src: &mut RmExpandedCdw, dst: &mut RmExpandedCdw) {
     // After 7 passes (odd), result is in bufs[1] = dst
     *dst = bufs[cur];
 }
+
+/// Adds multiple codewords into an expanded codeword.
+///
+/// Accesses memory in order. Uses 0 and 1 (not -1 and +1).
+/// The resulting Hadamard transform has:
+/// - all values halved
+/// - the first entry is 64 too high
+///
+/// Constant-time: no secret-dependent branches or memory accesses.
+///
+/// # Arguments
+/// * `dest` - Output expanded codeword.
+/// * `src`  - Slice of `MULTIPLICITY` input codewords.
+pub fn expand_and_sum(dest: &mut RmExpandedCdw, src: &[RmCodeword; MULTIPLICITY]) {
+    // Initialize dest with the first copy
+    for part in 0..4usize {
+        for bit in 0..32usize {
+            dest[part * 32 + bit] = ((src[0].u32[part] >> bit) & 1) as i16;
+        }
+    }
+
+    // Accumulate the remaining copies
+    for copy in 1..MULTIPLICITY {
+        for part in 0..4usize {
+            for bit in 0..32usize {
+                dest[part * 32 + bit] =
+                    dest[part * 32 + bit].wrapping_add(((src[copy].u32[part] >> bit) & 1) as i16);
+            }
+        }
+    }
+}
