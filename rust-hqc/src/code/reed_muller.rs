@@ -170,3 +170,46 @@ pub fn expand_and_sum(dest: &mut RmExpandedCdw, src: &[RmCodeword; MULTIPLICITY]
         }
     }
 }
+
+/// Finds the location of the highest absolute value in the Hadamard transform.
+///
+/// Final step of the decoder: finds the peak location and sets bit 7
+/// if the peak value is positive.
+/// If two identical peaks exist, the one with the smallest value
+/// in the lowest 7 bits is taken.
+///
+/// Constant-time with respect to `transform` contents:
+/// no secret-dependent branches or memory accesses.
+///
+/// # Arguments
+/// * `transform` - Expanded codeword after Hadamard transform.
+///
+/// # Returns
+/// Peak position with bit 7 set if peak value is positive.
+pub fn find_peaks(transform: &RmExpandedCdw) -> i32 {
+    let mut peak_abs_value: i32 = 0;
+    let mut peak_value: i32 = 0;
+    let mut peak_pos: i32 = 0;
+
+    for i in 0..128i32 {
+        let t = transform[i as usize] as i32;
+
+        // Constant-time absolute value — no branch on secret t
+        // pos_mask = 0xFFFFFFFF if t > 0, else 0x00000000
+        let pos_mask: i32 = -((t > 0) as i32);
+        let absolute: i32 = (pos_mask & t) | (!pos_mask & t.wrapping_neg());
+
+        // Constant-time conditional update — no branch on secret absolute
+        // update_mask = 0xFFFFFFFF if absolute > peak_abs_value, else 0x00000000
+        let update_mask: i32 = -((absolute > peak_abs_value) as i32);
+        peak_value = (update_mask & t) | (!update_mask & peak_value);
+        peak_pos = (update_mask & i) | (!update_mask & peak_pos);
+        peak_abs_value = (update_mask & absolute) | (!update_mask & peak_abs_value);
+    }
+
+    // Set bit 7 if peak value is positive — constant-time
+    // (peak_value > 0) is 0 or 1 — no branch on secret data
+    peak_pos |= 128 * ((peak_value > 0) as i32);
+
+    peak_pos
+}

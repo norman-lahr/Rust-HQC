@@ -1,11 +1,12 @@
 use crate::code::reed_muller::{RmCodeword, RmExpandedCdw, MULTIPLICITY};
 use rand::prelude::*;
-use rand::{rngs::StdRng, SeedableRng};
+use rand::{rngs::SmallRng, rngs::StdRng, SeedableRng};
 
 unsafe extern "C" {
     fn encode(word: *mut RmCodeword, message: i32);
     fn hadamard(src: *mut RmExpandedCdw, dst: *mut RmExpandedCdw);
     fn expand_and_sum(dest: *mut RmExpandedCdw, src: *const RmCodeword);
+    fn find_peaks(transform: *mut RmExpandedCdw) -> i32;
 }
 
 /// Safe wrapper around the C `encode` function.
@@ -29,6 +30,11 @@ pub fn expand_and_sum_ref(dest: &mut RmExpandedCdw, src: &[RmCodeword; MULTIPLIC
     unsafe {
         expand_and_sum(dest as *mut RmExpandedCdw, src.as_ptr());
     }
+}
+
+/// Safe wrapper around the C `find_peaks` function.
+pub fn find_peaks_ref(transform: &mut RmExpandedCdw) -> i32 {
+    unsafe { find_peaks(transform as *mut RmExpandedCdw) }
 }
 
 #[test]
@@ -83,4 +89,23 @@ fn test_expand_and_sum() {
         dest, dest_ref,
         "Rust and C implementations must produce identical results"
     );
+}
+
+#[test]
+fn test_find_peaks() {
+    const TEST_ROUNDS: u64 = 100;
+    let mut rng = StdRng::seed_from_u64(4u64);
+
+    for i in 0..TEST_ROUNDS {
+        // Generate random i16 values for transform
+        let mut transform: RmExpandedCdw =
+            std::array::from_fn(|_| rng.random_range(-32768..=32767));
+
+        assert_eq!(
+            crate::code::reed_muller::find_peaks(&transform),
+            find_peaks_ref(&mut transform),
+            "Rust and C must agree at iteration {}",
+            i
+        );
+    }
 }
