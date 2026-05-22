@@ -1,12 +1,14 @@
 use crate::code::reed_muller::{RmCodeword, RmExpandedCdw, MULTIPLICITY};
+use crate::parameters::{VEC_N1N2_SIZE_64, VEC_N1_SIZE_64};
 use rand::prelude::*;
-use rand::{rngs::SmallRng, rngs::StdRng, SeedableRng};
+use rand::{rngs::StdRng, SeedableRng};
 
 unsafe extern "C" {
     fn encode(word: *mut RmCodeword, message: i32);
     fn hadamard(src: *mut RmExpandedCdw, dst: *mut RmExpandedCdw);
     fn expand_and_sum(dest: *mut RmExpandedCdw, src: *const RmCodeword);
     fn find_peaks(transform: *mut RmExpandedCdw) -> i32;
+    fn reed_muller_encode(cdw: *mut u64, msg: *const u64);
 }
 
 /// Safe wrapper around the C `encode` function.
@@ -35,6 +37,15 @@ pub fn expand_and_sum_ref(dest: &mut RmExpandedCdw, src: &[RmCodeword; MULTIPLIC
 /// Safe wrapper around the C `find_peaks` function.
 pub fn find_peaks_ref(transform: &mut RmExpandedCdw) -> i32 {
     unsafe { find_peaks(transform as *mut RmExpandedCdw) }
+}
+
+/// Safe wrapper around the C `reed_muller_encode` function.
+pub fn reed_muller_encode_ref(msg: &[u64; VEC_N1_SIZE_64]) -> [u64; VEC_N1N2_SIZE_64] {
+    let mut cdw = [0u64; VEC_N1N2_SIZE_64];
+    unsafe {
+        reed_muller_encode(cdw.as_mut_ptr(), msg.as_ptr());
+    }
+    cdw
 }
 
 #[test]
@@ -107,5 +118,20 @@ fn test_find_peaks() {
             "Rust and C must agree at iteration {}",
             i
         );
+    }
+}
+
+#[test]
+fn test_reed_muller_encode() {
+    const TEST_ROUNDS: u64 = 100;
+    let mut rng = StdRng::seed_from_u64(4u64);
+
+    for i in 0..TEST_ROUNDS {
+        let msg: [u64; VEC_N1_SIZE_64] = std::array::from_fn(|_| rng.random_range(0..=u64::MAX));
+
+        let cdw = crate::code::reed_muller::reed_muller_encode(&msg);
+        let cdw_ref = reed_muller_encode_ref(&msg);
+
+        assert_eq!(cdw, cdw_ref, "Rust and C must agree at iteration {}", i);
     }
 }

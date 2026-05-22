@@ -213,3 +213,40 @@ pub fn find_peaks(transform: &RmExpandedCdw) -> i32 {
 
     peak_pos
 }
+
+/// Encodes the received word using Reed-Muller encoding.
+///
+/// Each of the `VEC_N1_SIZE_BYTES` message bytes is encoded into
+/// `MULTIPLICITY` repeated 128-bit RM(1,7) codewords.
+///
+/// # Arguments
+/// * `msg` - Input message of `VEC_N1_SIZE_64` 64-bit words.
+///
+/// # Returns
+/// Encoded codeword array of `VEC_N1N2_SIZE_64` 64-bit words.
+pub fn reed_muller_encode(msg: &[u64; VEC_N1_SIZE_64]) -> [u64; VEC_N1N2_SIZE_64] {
+    let mut output = [0u64; VEC_N1N2_SIZE_64];
+
+    for (word_idx, &word) in msg.iter().enumerate() {
+        for byte_idx in 0..8usize {
+            let i = word_idx * 8 + byte_idx;
+            if i >= VEC_N1_SIZE_BYTES {
+                break;
+            }
+
+            // Extract byte in little-endian order
+            let byte = (word >> (byte_idx * 8)) as u8;
+
+            // Encode and write MULTIPLICITY copies directly into output
+            let codeword = encode(byte as i32);
+            for copy in 0..MULTIPLICITY {
+                let pos = (i * MULTIPLICITY + copy) * 2;
+                for (j, &w32) in codeword.u32.iter().enumerate() {
+                    output[pos + j / 2] |= (w32 as u64) << ((j % 2) * 32);
+                }
+            }
+        }
+    }
+
+    output
+}

@@ -1,5 +1,5 @@
 #[cfg(feature = "hqc-1")]
-/// Precomputed Galois‐field powers for Reed–Solomon operations.
+/// Precomputed Galois-field powers for Reed–Solomon operations.
 ///
 /// In GF(2^8) with primitive element α, this table holds α^(i * j) for
 ///   - row index i in [0 … 29],
