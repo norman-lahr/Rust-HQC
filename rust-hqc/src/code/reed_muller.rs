@@ -250,3 +250,39 @@ pub fn reed_muller_encode(msg: &[u64; VEC_N1_SIZE_64]) -> [u64; VEC_N1N2_SIZE_64
 
     output
 }
+
+pub fn reed_muller_decode(cdw: &[u64; VEC_N1N2_SIZE_64]) -> [u64; VEC_N1_SIZE_64] {
+    let mut output = [0u64; VEC_N1_SIZE_64];
+
+    for i in 0..VEC_N1_SIZE_BYTES {
+        // Extract MULTIPLICITY codewords starting at i * MULTIPLICITY
+        let pos = i * MULTIPLICITY * 2;
+        let mut src = [RmCodeword::zeroed(); MULTIPLICITY];
+        for copy in 0..MULTIPLICITY {
+            let base = pos + copy * 2;
+            src[copy].u32[0] = cdw[base] as u32;
+            src[copy].u32[1] = (cdw[base] >> 32) as u32;
+            src[copy].u32[2] = cdw[base + 1] as u32;
+            src[copy].u32[3] = (cdw[base + 1] >> 32) as u32;
+        }
+
+        // Expand and sum the codewords
+        let mut expanded: RmExpandedCdw = [0i16; 128];
+        expand_and_sum(&mut expanded, &src);
+
+        // Apply Hadamard transform
+        let mut transform: RmExpandedCdw = [0i16; 128];
+        hadamard(&mut expanded, &mut transform);
+
+        // Fix the first entry to get the half Hadamard transform
+        transform[0] = transform[0].wrapping_sub((64 * MULTIPLICITY) as i16);
+
+        // Decode and store the byte into output
+        let byte = find_peaks(&transform) as u8;
+        let word_idx = i / 8;
+        let byte_idx = i % 8;
+        output[word_idx] |= (byte as u64) << (byte_idx * 8);
+    }
+
+    output
+}

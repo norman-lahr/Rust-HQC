@@ -9,6 +9,7 @@ unsafe extern "C" {
     fn expand_and_sum(dest: *mut RmExpandedCdw, src: *const RmCodeword);
     fn find_peaks(transform: *mut RmExpandedCdw) -> i32;
     fn reed_muller_encode(cdw: *mut u64, msg: *const u64);
+    fn reed_muller_decode(msg: *mut u64, cdw: *const u64);
 }
 
 /// Safe wrapper around the C `encode` function.
@@ -46,6 +47,15 @@ pub fn reed_muller_encode_ref(msg: &[u64; VEC_N1_SIZE_64]) -> [u64; VEC_N1N2_SIZ
         reed_muller_encode(cdw.as_mut_ptr(), msg.as_ptr());
     }
     cdw
+}
+
+/// Safe wrapper around the C `reed_muller_decode` function.
+pub fn reed_muller_decode_ref(cdw: &[u64; VEC_N1N2_SIZE_64]) -> [u64; VEC_N1_SIZE_64] {
+    let mut msg = [0u64; VEC_N1_SIZE_64];
+    unsafe {
+        reed_muller_decode(msg.as_mut_ptr(), cdw.as_ptr());
+    }
+    msg
 }
 
 #[test]
@@ -133,5 +143,24 @@ fn test_reed_muller_encode() {
         let cdw_ref = reed_muller_encode_ref(&msg);
 
         assert_eq!(cdw, cdw_ref, "Rust and C must agree at iteration {}", i);
+    }
+}
+
+#[test]
+fn test_reed_muller_decode() {
+    const TEST_ROUNDS: u64 = 100;
+    let mut rng = StdRng::seed_from_u64(4u64);
+    for i in 0..TEST_ROUNDS {
+        let msg: [u64; VEC_N1_SIZE_64] = std::array::from_fn(|_| rng.random_range(0..=u64::MAX));
+        let cdw = crate::code::reed_muller::reed_muller_encode(&msg);
+
+        let decoded = crate::code::reed_muller::reed_muller_decode(&cdw);
+        let decoded_ref = reed_muller_decode_ref(&cdw);
+
+        assert_eq!(
+            decoded, decoded_ref,
+            "Rust and C decode must agree at iteration {}",
+            i
+        );
     }
 }
