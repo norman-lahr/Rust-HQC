@@ -6,6 +6,7 @@ use crate::parameters::PARAM_M;
 unsafe extern "C" {
     fn gf_generate(exp: *mut u16, log: *mut u16, m: i16);
     fn gf_reduce(x: u16) -> u16;
+    fn gf_carryless_mul(c: *mut u8, a: u8, b: u8);
 }
 
 /// Safe wrapper around the C `gf_generate` function.
@@ -22,6 +23,15 @@ pub fn gf_generate_ref(m: u16) -> (Vec<u16>, Vec<u16>) {
 /// Safe wrapper around the C `gf_reduce` function.
 pub fn gf_reduce_ref(x: u16) -> u16 {
     unsafe { gf_reduce(x) }
+}
+
+/// Safe wrapper around the C `gf_carryless_mul` function.
+pub fn gf_carryless_mul_ref(a: u8, b: u8) -> [u8; 2] {
+    let mut c = [0u8; 2];
+    unsafe {
+        gf_carryless_mul(c.as_mut_ptr(), a, b);
+    }
+    c
 }
 
 #[test]
@@ -57,5 +67,18 @@ fn test_gf_reduce_all_degree_14_values() {
         let r = crate::gf::gf_reduce(x as u16);
         let r_ref = gf_reduce_ref(x as u16);
         assert_eq!(r, r_ref, "Rust and C must agree for x={}", x);
+    }
+}
+
+#[test]
+fn test_gf_carryless_mul() {
+    for a in 0..=255u16 {
+        for b in 0..=255u16 {
+            let a = a as u8;
+            let b = b as u8;
+            let r = crate::gf::gf_carryless_mul(a, b);
+            let r_ref = gf_carryless_mul_ref(a, b);
+            assert_eq!(r, r_ref, "Rust and C must agree for a={}, b={}", a, b);
+        }
     }
 }

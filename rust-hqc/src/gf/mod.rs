@@ -93,5 +93,67 @@ pub fn gf_reduce(mut x: u16) -> u16 {
     x
 }
 
+/// Constant-time equality-to-zero mask.
+///
+/// # Returns
+/// `0xFFFFFFFF` if `x == 0`, `0x00000000` otherwise.
+#[inline]
+fn eq_zero_mask_u32(x: u32) -> u32 {
+    // (x | -x) has its MSB set iff x != 0 (standard branchless nonzero test)
+    let t = x | x.wrapping_neg();
+    (t >> 31).wrapping_sub(1)
+}
+
+/// Carry-less multiplication of two GF(2) polynomials (byte-sized).
+///
+/// Implementation of algorithm `mul1` from
+/// <https://hal.inria.fr/inria-00188261v4/document> with s=2, w=8.
+///
+/// Constant-time: no secret-dependent branches or memory accesses.
+///
+/// # Arguments
+/// * `a` - First polynomial (secret).
+/// * `b` - Second polynomial (secret).
+///
+/// # Returns
+/// `[lo, hi]` — the carryless product split into low and high bytes.
+pub fn gf_carryless_mul(a: u8, b: u8) -> [u8; 2] {
+    let mut u = [0u16; 4];
+    u[0] = 0;
+    u[1] = (b as u16) & ((1u16 << 7) - 1);
+    u[2] = u[1] << 1;
+    u[3] = u[2] ^ u[1];
+
+    let tmp1 = (a as u16) & 3;
+    let mut g: u16 = 0;
+    for i in 0..4u32 {
+        let tmp2 = (tmp1 as u32).wrapping_sub(i);
+        let mask = eq_zero_mask_u32(tmp2) as u16;
+        g ^= u[i as usize] & mask;
+    }
+    let mut l: u16 = g;
+    let mut h: u16 = 0;
+
+    // Idiomatic replacement for the while loop
+    for i in (2..8u8).step_by(2) {
+        g = 0;
+        let tmp3 = ((a >> i) as u16) & 3;
+        for j in 0..4u32 {
+            let tmp2 = (tmp3 as u32).wrapping_sub(j);
+            let mask = eq_zero_mask_u32(tmp2) as u16;
+            g ^= u[j as usize] & mask;
+        }
+        l ^= g << i;
+        h ^= g >> (8 - i);
+    }
+
+    let bit7_mask: u16 = ((b >> 7) & 1) as u16;
+    let mask: u16 = bit7_mask.wrapping_neg();
+    l ^= ((a as u16) << 7) & mask;
+    h ^= ((a as u16) >> 1) & mask;
+
+    [l as u8, h as u8]
+}
+
 #[cfg(test)]
 mod tests;
