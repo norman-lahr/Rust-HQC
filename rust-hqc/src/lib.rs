@@ -1,4 +1,5 @@
 pub mod code;
+pub mod gf;
 pub mod gf2x;
 pub mod parameters;
 mod pke;
