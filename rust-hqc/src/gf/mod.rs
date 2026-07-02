@@ -155,5 +155,41 @@ pub fn gf_carryless_mul(a: u8, b: u8) -> [u8; 2] {
     [l as u8, h as u8]
 }
 
+/// Multiplies two elements of GF(2^PARAM_M).
+///
+/// (delegates to `gf_carryless_mul` and `gf_reduce`, both constant-time).
+///
+/// # Arguments
+/// * `a` - Element of GF(2^PARAM_M).
+/// * `b` - Element of GF(2^PARAM_M).
+///
+/// # Returns
+/// The product `a * b` in GF(2^PARAM_M).
+pub fn gf_mul(a: u16, b: u16) -> u16 {
+    let c = gf_carryless_mul(a as u8, b as u8);
+    let tmp = (c[0] as u16) ^ ((c[1] as u16) << 8);
+    gf_reduce(tmp)
+}
+
+/// Squares an element of GF(2^PARAM_M).
+///
+///
+/// # Arguments
+/// * `a` - Element of GF(2^PARAM_M).
+///
+/// # Returns
+/// `a^2` in GF(2^PARAM_M).
+pub fn gf_square(a: u16) -> u16 {
+    let mut b: u32 = a as u32;
+    let mut s: u32 = b & 1;
+
+    for i in 1..PARAM_M {
+        b <<= 1;
+        s ^= b & (1u32 << (2 * i));
+    }
+
+    gf_reduce(s as u16)
+}
+
 #[cfg(test)]
 mod tests;

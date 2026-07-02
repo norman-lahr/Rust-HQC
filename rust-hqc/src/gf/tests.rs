@@ -7,6 +7,8 @@ unsafe extern "C" {
     fn gf_generate(exp: *mut u16, log: *mut u16, m: i16);
     fn gf_reduce(x: u16) -> u16;
     fn gf_carryless_mul(c: *mut u8, a: u8, b: u8);
+    fn gf_mul(a: u16, b: u16) -> u16;
+    fn gf_square(a: u16) -> u16;
 }
 
 /// Safe wrapper around the C `gf_generate` function.
@@ -34,6 +36,16 @@ pub fn gf_carryless_mul_ref(a: u8, b: u8) -> [u8; 2] {
     c
 }
 
+/// Safe wrapper around the C `gf_mul` function.
+pub fn gf_mul_ref(a: u16, b: u16) -> u16 {
+    unsafe { gf_mul(a, b) }
+}
+
+/// Safe wrapper around the C `gf_square` function.
+pub fn gf_square_ref(a: u16) -> u16 {
+    unsafe { gf_square(a) }
+}
+
 #[test]
 fn test_gf_generate() {
     let (exp, log) = crate::gf::gf_generate(PARAM_M as u16);
@@ -43,6 +55,10 @@ fn test_gf_generate() {
     assert_eq!(log, log_ref, "Rust and C log tables must be identical");
 }
 
+// Remove 'static from
+// static uint16_t gf_reduce(uint16_t x);
+// in
+// gf.c
 #[test]
 fn test_gf_reduce_random() {
     const TEST_ROUNDS: u64 = 100;
@@ -80,5 +96,25 @@ fn test_gf_carryless_mul() {
             let r_ref = gf_carryless_mul_ref(a, b);
             assert_eq!(r, r_ref, "Rust and C must agree for a={}, b={}", a, b);
         }
+    }
+}
+
+#[test]
+fn test_gf_mul() {
+    for a in 0..=255u16 {
+        for b in 0..=255u16 {
+            let r = crate::gf::gf_mul(a, b);
+            let r_ref = gf_mul_ref(a, b);
+            assert_eq!(r, r_ref, "Rust and C must agree for a={}, b={}", a, b);
+        }
+    }
+}
+
+#[test]
+fn test_gf_square() {
+    for a in 0..=255u16 {
+        let r = crate::gf::gf_square(a);
+        let r_ref = gf_square_ref(a);
+        assert_eq!(r, r_ref, "Rust and C must agree for a={}", a);
     }
 }
