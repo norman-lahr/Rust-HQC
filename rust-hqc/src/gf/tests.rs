@@ -9,6 +9,7 @@ unsafe extern "C" {
     fn gf_carryless_mul(c: *mut u8, a: u8, b: u8);
     fn gf_mul(a: u16, b: u16) -> u16;
     fn gf_square(a: u16) -> u16;
+    fn gf_inverse(a: u16) -> u16;
 }
 
 /// Safe wrapper around the C `gf_generate` function.
@@ -44,6 +45,11 @@ pub fn gf_mul_ref(a: u16, b: u16) -> u16 {
 /// Safe wrapper around the C `gf_square` function.
 pub fn gf_square_ref(a: u16) -> u16 {
     unsafe { gf_square(a) }
+}
+
+/// Safe wrapper around the C `gf_inverse` function.
+pub fn gf_inverse_ref(a: u16) -> u16 {
+    unsafe { gf_inverse(a) }
 }
 
 #[test]
@@ -115,6 +121,15 @@ fn test_gf_square() {
     for a in 0..=255u16 {
         let r = crate::gf::gf_square(a);
         let r_ref = gf_square_ref(a);
+        assert_eq!(r, r_ref, "Rust and C must agree for a={}", a);
+    }
+}
+
+#[test]
+fn test_rust_matches_ffi_exhaustive() {
+    for a in 0..=255u16 {
+        let r = crate::gf::gf_inverse(a);
+        let r_ref = gf_inverse_ref(a);
         assert_eq!(r, r_ref, "Rust and C must agree for a={}", a);
     }
 }

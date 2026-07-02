@@ -191,5 +191,31 @@ pub fn gf_square(a: u16) -> u16 {
     gf_reduce(s as u16)
 }
 
+/// Computes the inverse of an element of GF(2^8),
+/// using the addition chain 1, 2, 3, 4, 7, 11, 15, 30, 60, 120, 127, 254.
+///
+/// Constant-time: composed entirely of `gf_square` and `gf_mul`,
+/// both already constant-time. No secret-dependent branches.
+///
+/// # Arguments
+/// * `a` - Element of GF(2^PARAM_M).
+///
+/// # Returns
+/// The inverse of `a` in GF(2^PARAM_M).
+pub fn gf_inverse(a: u16) -> u16 {
+    let mut inv: u16 = gf_square(a); // a^2
+    let tmp1: u16 = gf_mul(inv, a); // a^3
+    inv = gf_square(inv); // a^4
+    let tmp2: u16 = gf_mul(inv, tmp1); // a^7
+    let tmp1: u16 = gf_mul(inv, tmp2); // a^11
+    inv = gf_mul(tmp1, inv); // a^15
+    inv = gf_square(inv); // a^30
+    inv = gf_square(inv); // a^60
+    inv = gf_square(inv); // a^120
+    inv = gf_mul(inv, tmp2); // a^127
+    inv = gf_square(inv); // a^254
+    inv
+}
+
 #[cfg(test)]
 mod tests;
