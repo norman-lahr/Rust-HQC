@@ -7,7 +7,7 @@
 //! https://binary.cr.yp.to/mcbits-20130616.pdf
 
 use crate::gf::*;
-use crate::parameters::{PARAM_FFT, PARAM_M};
+use crate::parameters::{PARAM_FFT, PARAM_GF_MUL_ORDER, PARAM_M};
 
 /// Computes the basis of betas (omitting 1) used in the additive FFT and its transpose.
 ///
@@ -317,6 +317,35 @@ pub fn fft(f: &[u16], f_coeffs: usize) -> Vec<u16> {
     }
 
     w
+}
+
+/// Retrieves the error polynomial from the evaluations `w` of the ELP
+/// (Error Locator Polynomial) on all field elements.
+///
+/// # Arguments
+/// * `w` - Array of size `2^PARAM_M`, ELP evaluations.
+/// * `error` - Output error polynomial
+pub fn fft_retrieve_error_poly(error: &mut [u8], w: &[u16]) {
+    let gammas = compute_fft_betas(); // PARAM_M - 1 public basis elements
+
+    let mut gammas_sums = vec![0u16; 1usize << (PARAM_M - 1)];
+    compute_subset_sums(&gammas, &mut gammas_sums);
+
+    let k: usize = 1usize << (PARAM_M - 1);
+
+    // Constant-time zero test: bit = 1 if w[i] == 0, else 0
+    let is_zero = |x: u16| -> u16 { 1u16 ^ (x.wrapping_neg() >> 15) };
+
+    error[0] ^= is_zero(w[0]) as u8;
+    error[0] ^= is_zero(w[k]) as u8;
+
+    for i in 1..k {
+        let index = PARAM_GF_MUL_ORDER - (GF_LOG[gammas_sums[i] as usize] as usize);
+        error[index] ^= is_zero(w[i]) as u8;
+
+        let index = PARAM_GF_MUL_ORDER - (GF_LOG[(gammas_sums[i] ^ 1) as usize] as usize);
+        error[index] ^= is_zero(w[k + i]) as u8;
+    }
 }
 
 #[cfg(test)]

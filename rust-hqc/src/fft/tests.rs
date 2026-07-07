@@ -1,4 +1,4 @@
-use crate::parameters::{PARAM_DELTA, PARAM_FFT, PARAM_M};
+use crate::parameters::{PARAM_DELTA, PARAM_FFT, PARAM_M, VEC_N_SIZE_BYTES};
 
 use rand::prelude::*;
 use rand::{rngs::StdRng, SeedableRng};
@@ -9,6 +9,7 @@ unsafe extern "C" {
     // fn radix(f0: *mut u16, f1: *mut u16, f: *const u16, m_f: u32);
     // fn radix_big(f0: *mut u16, f1: *mut u16, f: *const u16, m_f: u32);
     fn fft(w: *mut u16, f: *const u16, f_coeffs: usize);
+    fn fft_retrieve_error_poly(error: *mut u8, w: *const u16);
 }
 
 // /// Safe wrapper around the C `compute_fft_betas` function.
@@ -58,6 +59,15 @@ pub fn fft_ref(f: &[u16], f_coeffs: usize) -> Vec<u16> {
         fft(w.as_mut_ptr(), f.as_ptr(), f_coeffs);
     }
     w
+}
+
+/// Safe wrapper around the C `fft_retrieve_error_poly` function.
+pub fn fft_retrieve_error_poly_ref(w: &[u16], error_len: usize) -> Vec<u8> {
+    let mut error = vec![0u8; error_len];
+    unsafe {
+        fft_retrieve_error_poly(error.as_mut_ptr(), w.as_ptr());
+    }
+    error
 }
 
 // #[test]
@@ -140,5 +150,29 @@ fn test_fft() {
         let w_ref = fft_ref(&f, f_coeffs);
 
         assert_eq!(w, w_ref, "Rust and C must agree at iteration {}", i);
+    }
+}
+
+#[test]
+fn test_rust_matches_ref() {
+    const TEST_ROUNDS: u64 = 100;
+    let mut rng = StdRng::seed_from_u64(4u64);
+    let error_len = VEC_N_SIZE_BYTES;
+
+    for i in 0..TEST_ROUNDS {
+        let w: Vec<u16> = (0..(1usize << PARAM_M))
+            .map(|_| rng.random_range(0..=u16::MAX))
+            .collect();
+
+        let mut error_rs = vec![0u8; error_len];
+        crate::fft::fft_retrieve_error_poly(&mut error_rs, &w);
+
+        let error_ref = fft_retrieve_error_poly_ref(&w, error_len);
+
+        assert_eq!(
+            error_rs, error_ref,
+            "Rust and C must agree at iteration {}",
+            i
+        );
     }
 }
