@@ -1,5 +1,6 @@
 use crate::code::reed_muller::{RmCodeword, RmExpandedCdw, MULTIPLICITY};
-use crate::parameters::{VEC_N1N2_SIZE_64, VEC_N1_SIZE_64};
+use crate::code::reed_solomon::gf_mod;
+use crate::parameters::{PARAM_GF_MUL_ORDER, VEC_N1N2_SIZE_64, VEC_N1_SIZE_64};
 use rand::prelude::*;
 use rand::{rngs::StdRng, SeedableRng};
 
@@ -10,6 +11,9 @@ unsafe extern "C" {
     fn find_peaks(transform: *mut RmExpandedCdw) -> i32;
     fn reed_muller_encode(cdw: *mut u64, msg: *const u64);
     fn reed_muller_decode(msg: *mut u64, cdw: *const u64);
+
+    #[link_name = "mod"]
+    fn gf_mod_c(i: u16, modulus: u16) -> u16;
 }
 
 /// Safe wrapper around the C `encode` function.
@@ -56,6 +60,11 @@ pub fn reed_muller_decode_ref(cdw: &[u64; VEC_N1N2_SIZE_64]) -> [u64; VEC_N1_SIZ
         reed_muller_decode(msg.as_mut_ptr(), cdw.as_ptr());
     }
     msg
+}
+
+/// Safe wrapper around the C `mod` function.
+pub fn gf_mod_ref(i: u16, modulus: u16) -> u16 {
+    unsafe { gf_mod_c(i, modulus) }
 }
 
 #[test]
@@ -161,6 +170,20 @@ fn test_reed_muller_decode() {
             decoded, decoded_ref,
             "Rust and C decode must agree at iteration {}",
             i
+        );
+    }
+}
+
+#[test]
+fn test_gf_mod() {
+    let modulus = PARAM_GF_MUL_ORDER as u16;
+    for i in 0..(2 * modulus) {
+        let r = crate::code::reed_solomon::gf_mod(i, modulus);
+        let r_ref = i % modulus; //gf_mod_ref(i, modulus);
+        assert_eq!(
+            r, r_ref,
+            "Rust and C must agree for i={}, modulus={}",
+            i, modulus
         );
     }
 }

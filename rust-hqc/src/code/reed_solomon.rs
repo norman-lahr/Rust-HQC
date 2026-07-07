@@ -594,3 +594,23 @@ const ALPHA_IJ_POW: [[u16; 89]; 58] = [
         208, 63, 18, 12, 214, 84, 56, 16, 222,
     ],
 ];
+
+/// TODO move to gf module?
+/// Returns `i` modulo the given modulus.
+///
+/// `i` must be less than `2 * modulus`. The return value is either
+/// `i` or `i - modulus`.
+///
+/// # Arguments
+/// * `i`       - The integer whose modulo is taken.
+/// * `modulus` - The modulus.
+///
+/// # Returns
+/// `i mod modulus`.
+#[inline]
+pub fn gf_mod(i: u16, modulus: u16) -> u16 {
+    let tmp: u16 = i.wrapping_sub(modulus);
+    // mask = 0xFFFF if tmp's sign bit is set (i.e. i < modulus), else 0x0000
+    let mask: i16 = -((tmp >> 15) as i16);
+    tmp.wrapping_add((mask as u16) & modulus)
+}
