@@ -1,3 +1,6 @@
+use crate::gf::{GF_EXP, GF_LOG};
+use crate::parameters::{PARAM_DELTA, PARAM_GF_MUL_ORDER};
+
 #[cfg(feature = "hqc-1")]
 /// Precomputed Galois-field powers for Reed–Solomon operations.
 ///
@@ -613,4 +616,28 @@ pub fn gf_mod(i: u16, modulus: u16) -> u16 {
     // mask = 0xFFFF if tmp's sign bit is set (i.e. i < modulus), else 0x0000
     let mask: i16 = -((tmp >> 15) as i16);
     tmp.wrapping_add((mask as u16) & modulus)
+}
+
+/// Computes and prints the generator polynomial of the primitive Reed-Solomon code
+/// with given parameters.
+///
+/// Code length is `2^m - 1`. `PARAM_DELTA` is the targeted correction
+/// capacity of the code.
+pub fn print_generator_poly() {
+    let mut poly = [0u16; 2 * PARAM_DELTA + 1];
+    poly[0] = 1;
+    let mut tmp_degree: usize = 0;
+
+    for i in 1..(2 * PARAM_DELTA + 1) as u16 {
+        for j in (1..=tmp_degree).rev() {
+            poly[j] = GF_EXP
+                [gf_mod(GF_LOG[poly[j] as usize] + i, PARAM_GF_MUL_ORDER as u16) as usize]
+                ^ poly[j - 1];
+        }
+        poly[0] = GF_EXP[gf_mod(GF_LOG[poly[0] as usize] + i, PARAM_GF_MUL_ORDER as u16) as usize];
+        tmp_degree += 1;
+        poly[tmp_degree] = 1;
+    }
+
+    println!("{:?}", poly);
 }
