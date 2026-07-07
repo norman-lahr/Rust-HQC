@@ -154,7 +154,7 @@ fn test_fft() {
 }
 
 #[test]
-fn test_rust_matches_ref() {
+fn test_fft_retrieve_error_poly() {
     const TEST_ROUNDS: u64 = 100;
     let mut rng = StdRng::seed_from_u64(4u64);
     let error_len = VEC_N_SIZE_BYTES;
