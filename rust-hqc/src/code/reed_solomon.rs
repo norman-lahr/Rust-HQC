@@ -1,3 +1,4 @@
+use crate::fft::{fft, fft_retrieve_error_poly};
 use crate::gf::{gf_inverse, gf_mul, GF_EXP, GF_LOG};
 use crate::parameters::{
     PARAM_DELTA, PARAM_G, PARAM_GF_MUL_ORDER, PARAM_K, PARAM_N1, RS_POLY_COEFS, VEC_N1_SIZE_64,
@@ -813,4 +814,16 @@ pub fn compute_elp(syndromes: &[u16]) -> ([u16; PARAM_DELTA + 1], u16) {
     }
 
     (sigma, deg_sigma)
+}
+
+/// Computes the error polynomial from the error locator polynomial sigma.
+///
+/// See `fft` for more details.
+///
+/// # Arguments
+/// * `sigma` - Array of `2^PARAM_FFT` elements storing the error locator polynomial.
+/// * `error` - Output array of `2^PARAM_M` elements receiving the error polynomial.
+pub fn compute_roots(error: &mut [u8], sigma: &[u16]) {
+    let w = fft(sigma, PARAM_DELTA + 1);
+    fft_retrieve_error_poly(error, &w);
 }

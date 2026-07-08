@@ -1,7 +1,8 @@
 use crate::code::reed_muller::{RmCodeword, RmExpandedCdw, MULTIPLICITY};
 use crate::code::reed_solomon::gf_mod;
 use crate::parameters::{
-    PARAM_DELTA, PARAM_GF_MUL_ORDER, PARAM_N1, VEC_K_SIZE_64, VEC_N1N2_SIZE_64, VEC_N1_SIZE_64,
+    PARAM_DELTA, PARAM_FFT, PARAM_GF_MUL_ORDER, PARAM_N1, VEC_K_SIZE_64, VEC_N1N2_SIZE_64,
+    VEC_N1_SIZE_64, VEC_N_SIZE_BYTES,
 };
 use rand::prelude::*;
 use rand::{rngs::StdRng, SeedableRng};
@@ -19,6 +20,7 @@ unsafe extern "C" {
     fn reed_solomon_encode(cdw: *mut u64, msg: *const u64);
     fn compute_syndromes(syndromes: *mut u16, cdw: *mut u8);
     fn compute_elp(sigma: *mut u16, syndromes: *const u16) -> u16;
+    fn compute_roots(error: *mut u8, sigma: *mut u16);
 }
 
 /// Safe wrapper around the C `encode` function.
@@ -96,6 +98,16 @@ pub fn compute_elp_ref(syndromes: &[u16]) -> ([u16; PARAM_DELTA + 1], u16) {
     let mut sigma = [0u16; PARAM_DELTA + 1];
     let deg_sigma = unsafe { compute_elp(sigma.as_mut_ptr(), syndromes.as_ptr()) };
     (sigma, deg_sigma)
+}
+
+/// Safe wrapper around the C `compute_roots` function.
+pub fn compute_roots_ref(sigma: &[u16], error_len: usize) -> Vec<u8> {
+    let mut sigma_copy = sigma.to_vec(); // C signature takes non-const uint16_t*
+    let mut error = vec![0u8; error_len];
+    unsafe {
+        compute_roots(error.as_mut_ptr(), sigma_copy.as_mut_ptr());
+    }
+    error
 }
 
 #[test]
@@ -266,5 +278,29 @@ fn test_compute_elp() {
 
         assert_eq!(sigma, sigma_ref, "sigma mismatch at iteration {}", i);
         assert_eq!(deg, deg_ref, "deg_sigma mismatch at iteration {}", i);
+    }
+}
+
+#[test]
+fn test_compute_roots() {
+    let mut rng = StdRng::seed_from_u64(4u64);
+    const TEST_ROUNDS: u64 = 100;
+    let error_len = VEC_N_SIZE_BYTES;
+
+    for i in 0..TEST_ROUNDS {
+        let sigma: Vec<u16> = (0..(1usize << PARAM_FFT))
+            .map(|_| rng.random_range(0..=u16::MAX))
+            .collect();
+
+        let mut error_rs = vec![0u8; error_len];
+        crate::code::reed_solomon::compute_roots(&mut error_rs, &sigma);
+
+        let error_ref = compute_roots_ref(&sigma, error_len);
+
+        assert_eq!(
+            error_rs, error_ref,
+            "Rust and C must agree at iteration {}",
+            i
+        );
     }
 }
