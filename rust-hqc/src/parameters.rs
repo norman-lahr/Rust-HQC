@@ -1,3 +1,5 @@
+use std::ops::Div;
+
 /// Creates a bitmask with `a % size` bits set.
 /// Equivalent to C: `#define BITMASK(a, size) ((1UL << (a % size)) - 1)`
 pub const fn bitmask(a: usize, size: usize) -> u64 {
@@ -70,6 +72,8 @@ pub const VEC_N_SIZE_64: usize = PARAM_N.div_ceil(64);
 pub const VEC_N1_SIZE_64: usize = PARAM_N1.div_ceil(8);
 /// Size of array to store `PARAM_N1N2` bits in 64-bit words.
 pub const VEC_N1N2_SIZE_64: usize = PARAM_N1N2.div_ceil(64);
+/// Size of array to store `PARAM_K` bits in 64-bit words.
+pub const VEC_K_SIZE_64: usize = PARAM_K.div_ceil(8);
 
 // -------------------------------------------------------
 // Reed–Solomon parameters
