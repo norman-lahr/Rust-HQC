@@ -1,6 +1,8 @@
 use crate::code::reed_muller::{RmCodeword, RmExpandedCdw, MULTIPLICITY};
 use crate::code::reed_solomon::gf_mod;
-use crate::parameters::{PARAM_GF_MUL_ORDER, VEC_K_SIZE_64, VEC_N1N2_SIZE_64, VEC_N1_SIZE_64};
+use crate::parameters::{
+    PARAM_DELTA, PARAM_GF_MUL_ORDER, PARAM_N1, VEC_K_SIZE_64, VEC_N1N2_SIZE_64, VEC_N1_SIZE_64,
+};
 use rand::prelude::*;
 use rand::{rngs::StdRng, SeedableRng};
 
@@ -15,6 +17,7 @@ unsafe extern "C" {
     // #[link_name = "mod"]
     // fn gf_mod_c(i: u16, modulus: u16) -> u16;
     fn reed_solomon_encode(cdw: *mut u64, msg: *const u64);
+    fn compute_syndromes(syndromes: *mut u16, cdw: *mut u8);
 }
 
 /// Safe wrapper around the C `encode` function.
@@ -75,6 +78,16 @@ pub fn reed_solomon_encode_ref(msg: &[u64]) -> Vec<u64> {
         reed_solomon_encode(cdw.as_mut_ptr(), msg.as_ptr());
     }
     cdw
+}
+
+/// Safe wrapper around the C `compute_syndromes` function.
+pub fn compute_syndromes_ref(cdw: &[u8]) -> [u16; 2 * PARAM_DELTA] {
+    let mut cdw_copy = cdw.to_vec(); // C signature takes non-const uint8_t*
+    let mut syndromes = [0u16; 2 * PARAM_DELTA];
+    unsafe {
+        compute_syndromes(syndromes.as_mut_ptr(), cdw_copy.as_mut_ptr());
+    }
+    syndromes
 }
 
 #[test]
@@ -208,5 +221,25 @@ fn test_reed_solomon_encode() {
         let cdw_ref = reed_solomon_encode_ref(&msg);
 
         assert_eq!(cdw, cdw_ref, "Rust and C must agree at iteration {}", i);
+    }
+}
+
+#[test]
+fn test_compute_syndrome() {
+    let mut rng = StdRng::seed_from_u64(4u64);
+    const TEST_ROUNDS: u64 = 100;
+    for i in 0..TEST_ROUNDS {
+        let cdw: Vec<u8> = (0..PARAM_N1)
+            .map(|_| rng.random_range(0..=u8::MAX))
+            .collect();
+
+        let syndromes = crate::code::reed_solomon::compute_syndromes(&cdw);
+        let syndromes_ref = compute_syndromes_ref(&cdw);
+
+        assert_eq!(
+            syndromes, syndromes_ref,
+            "Rust and C must agree at iteration {}",
+            i
+        );
     }
 }

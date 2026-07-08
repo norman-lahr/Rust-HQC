@@ -714,3 +714,23 @@ pub fn reed_solomon_encode(msg: &[u64]) -> Vec<u64> {
 
     cdw
 }
+
+/// Computes `2 * PARAM_DELTA` syndromes.
+///
+/// # Arguments
+/// * `cdw` - Received vector of `PARAM_N1` bytes.
+///
+/// # Returns
+/// Array of `2 * PARAM_DELTA` computed syndromes.
+pub fn compute_syndromes(cdw: &[u8]) -> [u16; 2 * PARAM_DELTA] {
+    let mut syndromes = [0u16; 2 * PARAM_DELTA];
+
+    for i in 0..2 * PARAM_DELTA {
+        for j in 1..PARAM_N1 {
+            syndromes[i] ^= gf_mul(cdw[j] as u16, ALPHA_IJ_POW[i][j - 1]);
+        }
+        syndromes[i] ^= cdw[0] as u16;
+    }
+
+    syndromes
+}
