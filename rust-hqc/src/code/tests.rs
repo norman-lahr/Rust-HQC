@@ -18,6 +18,7 @@ unsafe extern "C" {
     // fn gf_mod_c(i: u16, modulus: u16) -> u16;
     fn reed_solomon_encode(cdw: *mut u64, msg: *const u64);
     fn compute_syndromes(syndromes: *mut u16, cdw: *mut u8);
+    fn compute_elp(sigma: *mut u16, syndromes: *const u16) -> u16;
 }
 
 /// Safe wrapper around the C `encode` function.
@@ -88,6 +89,13 @@ pub fn compute_syndromes_ref(cdw: &[u8]) -> [u16; 2 * PARAM_DELTA] {
         compute_syndromes(syndromes.as_mut_ptr(), cdw_copy.as_mut_ptr());
     }
     syndromes
+}
+
+/// Safe wrapper around the C `compute_elp` function.
+pub fn compute_elp_ref(syndromes: &[u16]) -> ([u16; PARAM_DELTA + 1], u16) {
+    let mut sigma = [0u16; PARAM_DELTA + 1];
+    let deg_sigma = unsafe { compute_elp(sigma.as_mut_ptr(), syndromes.as_ptr()) };
+    (sigma, deg_sigma)
 }
 
 #[test]
@@ -241,5 +249,22 @@ fn test_compute_syndrome() {
             "Rust and C must agree at iteration {}",
             i
         );
+    }
+}
+
+#[test]
+fn test_compute_elp() {
+    let mut rng = StdRng::seed_from_u64(4u64);
+    const TEST_ROUNDS: u64 = 100;
+    for i in 0..TEST_ROUNDS {
+        let syndromes: Vec<u16> = (0..2 * PARAM_DELTA)
+            .map(|_| rng.random_range(0..=u16::MAX))
+            .collect();
+
+        let (sigma, deg) = crate::code::reed_solomon::compute_elp(&syndromes);
+        let (sigma_ref, deg_ref) = compute_elp_ref(&syndromes);
+
+        assert_eq!(sigma, sigma_ref, "sigma mismatch at iteration {}", i);
+        assert_eq!(deg, deg_ref, "deg_sigma mismatch at iteration {}", i);
     }
 }

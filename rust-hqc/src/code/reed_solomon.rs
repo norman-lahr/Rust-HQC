@@ -1,4 +1,4 @@
-use crate::gf::{gf_mul, GF_EXP, GF_LOG};
+use crate::gf::{gf_inverse, gf_mul, GF_EXP, GF_LOG};
 use crate::parameters::{
     PARAM_DELTA, PARAM_G, PARAM_GF_MUL_ORDER, PARAM_K, PARAM_N1, RS_POLY_COEFS, VEC_N1_SIZE_64,
 };
@@ -733,4 +733,84 @@ pub fn compute_syndromes(cdw: &[u8]) -> [u16; 2 * PARAM_DELTA] {
     }
 
     syndromes
+}
+
+/// Computes the error locator polynomial (ELP) sigma.
+///
+/// Constant-time implementation of Berlekamp's algorithm (see Lin &
+/// Costello, "Error Control Coding", Chapter 6 - BCH Codes). Uses `p` for
+/// rho, initialized at -1. `x_sigma_p` represents the polynomial
+/// `X^(mu-rho) * sigma_p(X)`. Instead of maintaining a list of sigmas,
+/// both `sigma` and `x_sigma_p` are updated in place. `sigma_copy` is a
+/// temporary save of `sigma` in case `x_sigma_p` needs updating.
+///
+/// # Arguments
+/// * `syndromes` - Array of at least `2*PARAM_DELTA` syndromes.
+///
+/// # Returns
+/// A tuple `(sigma, deg_sigma)`: the ELP coefficients and its degree.
+pub fn compute_elp(syndromes: &[u16]) -> ([u16; PARAM_DELTA + 1], u16) {
+    let mut sigma = [0u16; PARAM_DELTA + 1];
+    let mut sigma_copy = [0u16; PARAM_DELTA + 1];
+    let mut x_sigma_p = [0u16; PARAM_DELTA + 1];
+    x_sigma_p[1] = 1;
+
+    let mut deg_sigma: u16 = 0;
+    let mut deg_sigma_p: u16 = 0;
+    let mut deg_sigma_copy: u16;
+
+    let mut pp: u16 = 0xFFFFu16; // (uint16_t)-1, i.e. 2*rho
+    let mut d_p: u16 = 1;
+    let mut d: u16 = syndromes[0];
+
+    sigma[0] = 1;
+
+    for mu in 0..(2 * PARAM_DELTA) as u16 {
+        // Save sigma in case we need it to update x_sigma_p
+        sigma_copy[..PARAM_DELTA].copy_from_slice(&sigma[..PARAM_DELTA]);
+        deg_sigma_copy = deg_sigma;
+
+        let dd = gf_mul(d, gf_inverse(d_p));
+
+        let upper = core::cmp::min((mu + 1) as usize, PARAM_DELTA);
+        for i in 1..=upper {
+            sigma[i] ^= gf_mul(dd, x_sigma_p[i]);
+        }
+
+        let deg_x = mu.wrapping_sub(pp);
+        let deg_x_sigma_p = deg_x.wrapping_add(deg_sigma_p);
+
+        // mask1 = 0xFFFF if d != 0, else 0x0000
+        let mask1: u16 = (d.wrapping_neg() >> 15).wrapping_neg();
+        // mask2 = 0xFFFF if deg_x_sigma_p > deg_sigma, else 0x0000
+        let mask2: u16 = (deg_sigma.wrapping_sub(deg_x_sigma_p) >> 15).wrapping_neg();
+
+        // mask12 = 0xFFFF if deg_sigma increased, else 0x0000
+        // core::hint::black_box mirrors the C `volatile` hint, preventing
+        // the compiler from optimizing away/reordering the masked update.
+        let mask12: u16 = core::hint::black_box(mask1 & mask2);
+
+        deg_sigma ^= mask12 & (deg_x_sigma_p ^ deg_sigma);
+
+        if mu == (2 * PARAM_DELTA - 1) as u16 {
+            break;
+        }
+
+        pp ^= mask12 & (mu ^ pp);
+        d_p ^= mask12 & (d ^ d_p);
+
+        for i in (1..=PARAM_DELTA).rev() {
+            x_sigma_p[i] = (mask12 & sigma_copy[i - 1]) ^ (!mask12 & x_sigma_p[i - 1]);
+        }
+
+        deg_sigma_p ^= mask12 & (deg_sigma_copy ^ deg_sigma_p);
+
+        d = syndromes[(mu + 1) as usize];
+        let upper = core::cmp::min((mu + 1) as usize, PARAM_DELTA);
+        for i in 1..=upper {
+            d ^= gf_mul(sigma[i], syndromes[(mu + 1) as usize - i]);
+        }
+    }
+
+    (sigma, deg_sigma)
 }
