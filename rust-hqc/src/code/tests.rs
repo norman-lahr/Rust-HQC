@@ -1,6 +1,6 @@
 use crate::code::reed_muller::{RmCodeword, RmExpandedCdw, MULTIPLICITY};
 use crate::code::reed_solomon::gf_mod;
-use crate::parameters::{PARAM_GF_MUL_ORDER, VEC_N1N2_SIZE_64, VEC_N1_SIZE_64};
+use crate::parameters::{PARAM_GF_MUL_ORDER, VEC_K_SIZE_64, VEC_N1N2_SIZE_64, VEC_N1_SIZE_64};
 use rand::prelude::*;
 use rand::{rngs::StdRng, SeedableRng};
 
@@ -12,8 +12,9 @@ unsafe extern "C" {
     fn reed_muller_encode(cdw: *mut u64, msg: *const u64);
     fn reed_muller_decode(msg: *mut u64, cdw: *const u64);
 
-    #[link_name = "mod"]
-    fn gf_mod_c(i: u16, modulus: u16) -> u16;
+    // #[link_name = "mod"]
+    // fn gf_mod_c(i: u16, modulus: u16) -> u16;
+    fn reed_solomon_encode(cdw: *mut u64, msg: *const u64);
 }
 
 /// Safe wrapper around the C `encode` function.
@@ -63,8 +64,17 @@ pub fn reed_muller_decode_ref(cdw: &[u64; VEC_N1N2_SIZE_64]) -> [u64; VEC_N1_SIZ
 }
 
 /// Safe wrapper around the C `mod` function.
-pub fn gf_mod_ref(i: u16, modulus: u16) -> u16 {
-    unsafe { gf_mod_c(i, modulus) }
+// pub fn gf_mod_ref(i: u16, modulus: u16) -> u16 {
+//     unsafe { gf_mod_c(i, modulus) }
+// }
+
+/// Safe wrapper around the C `reed_solomon_encode` function.
+pub fn reed_solomon_encode_ref(msg: &[u64]) -> Vec<u64> {
+    let mut cdw = vec![0u64; VEC_N1_SIZE_64];
+    unsafe {
+        reed_solomon_encode(cdw.as_mut_ptr(), msg.as_ptr());
+    }
+    cdw
 }
 
 #[test]
@@ -185,5 +195,18 @@ fn test_gf_mod() {
             "Rust and C must agree for i={}, modulus={}",
             i, modulus
         );
+    }
+}
+
+#[test]
+fn test_reed_solomon_encode() {
+    let mut rng = StdRng::seed_from_u64(4u64);
+    const TEST_ROUNDS: u64 = 100;
+    for i in 0..TEST_ROUNDS {
+        let msg: [u64; VEC_K_SIZE_64] = std::array::from_fn(|_| rng.random_range(0..=u64::MAX));
+        let cdw = crate::code::reed_solomon::reed_solomon_encode(&msg);
+        let cdw_ref = reed_solomon_encode_ref(&msg);
+
+        assert_eq!(cdw, cdw_ref, "Rust and C must agree at iteration {}", i);
     }
 }

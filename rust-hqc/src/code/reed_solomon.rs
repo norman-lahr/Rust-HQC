@@ -1,5 +1,7 @@
-use crate::gf::{GF_EXP, GF_LOG};
-use crate::parameters::{PARAM_DELTA, PARAM_GF_MUL_ORDER};
+use crate::gf::{gf_mul, GF_EXP, GF_LOG};
+use crate::parameters::{
+    PARAM_DELTA, PARAM_G, PARAM_GF_MUL_ORDER, PARAM_K, PARAM_N1, RS_POLY_COEFS, VEC_N1_SIZE_64,
+};
 
 #[cfg(feature = "hqc-1")]
 /// Precomputed Galois-field powers for Reed–Solomon operations.
@@ -640,4 +642,75 @@ pub fn print_generator_poly() {
     }
 
     println!("{:?}", poly);
+}
+
+/// Reed-Solomon generator polynomial coefficients as u16 (for gf_mul).
+///
+/// Derived from `RS_POLY_COEFS` (defined in `parameters.rs`).
+/// TODO Implement RS_POLY_COEFS as polynomial, directly.
+const PARAM_RS_POLY: [u16; PARAM_G] = {
+    let mut arr = [0u16; PARAM_G];
+    let mut i = 0;
+    while i < PARAM_G {
+        arr[i] = RS_POLY_COEFS[i] as u16;
+        i += 1;
+    }
+    arr
+};
+
+/// Compile-time size check, RS_POLY_COEFS must match PARAM_G.
+const _: () = assert!(
+    RS_POLY_COEFS.len() == PARAM_G,
+    "RS_POLY_COEFS length must equal PARAM_G"
+);
+
+/// Encodes a message of `PARAM_K` bits to a Reed-Solomon codeword of
+/// `PARAM_N1` bytes.
+///
+/// Following Lin & Costello, "Error Control Coding" (Chapter 4 - Cyclic
+/// Codes), performs systematic encoding using a linear
+/// `(PARAM_N1 - PARAM_K)`-stage shift register with feedback connections
+/// based on the generator polynomial `PARAM_RS_POLY`.
+///
+/// # Arguments
+/// * `msg` - Input message of `VEC_K_SIZE_64` 64-bit words.
+///
+/// # Returns
+/// Encoded codeword of `VEC_N1_SIZE_64` 64-bit words.
+pub fn reed_solomon_encode(msg: &[u64]) -> Vec<u64> {
+    // Extract PARAM_K message bytes from the u64 words (little-endian)
+    let msg_bytes_full: Vec<u8> = msg.iter().flat_map(|w| w.to_le_bytes()).collect();
+    let msg_bytes = &msg_bytes_full[..PARAM_K];
+
+    let mut cdw_bytes = vec![0u8; PARAM_N1];
+    let mut tmp = [0u16; PARAM_G];
+
+    let shift_len = PARAM_N1 - PARAM_K; // number of shift-register stages
+
+    for i in 0..PARAM_K {
+        let gate_value: u8 = msg_bytes[PARAM_K - 1 - i] ^ cdw_bytes[shift_len - 1];
+
+        for j in 0..PARAM_G {
+            tmp[j] = gf_mul(gate_value as u16, PARAM_RS_POLY[j]);
+        }
+
+        for k in (1..shift_len).rev() {
+            cdw_bytes[k] = cdw_bytes[k - 1] ^ (tmp[k] as u8);
+        }
+        cdw_bytes[0] = tmp[0] as u8;
+    }
+
+    // Append the message bytes after the parity bytes
+    cdw_bytes[shift_len..shift_len + PARAM_K].copy_from_slice(msg_bytes);
+
+    // Repack cdw_bytes into u64 words (little-endian), zero-padding the tail
+    let word_count = VEC_N1_SIZE_64;
+    let mut cdw = vec![0u64; word_count];
+    for (i, chunk) in cdw_bytes.chunks(8).enumerate() {
+        let mut buf = [0u8; 8];
+        buf[..chunk.len()].copy_from_slice(chunk);
+        cdw[i] = u64::from_le_bytes(buf);
+    }
+
+    cdw
 }
