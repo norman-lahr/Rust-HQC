@@ -867,3 +867,82 @@ pub fn compute_z_poly(sigma: &[u16], degree: u16, syndromes: &[u16]) -> [u16; PA
 
     z
 }
+
+/// Branchless "nonzero" mask matching C's `-((int32_t)x) >> 31` idiom.
+///
+/// # Returns
+/// `0xFFFF` if `x != 0`, `0x0000` if `x == 0`.
+#[inline]
+fn mask_nonzero_i32(x: i32) -> u16 {
+    ((-x) >> 31) as u16
+}
+
+/// Computes the error values.
+///
+/// See Lin & Costello, "Error Control Coding", Chapter 6 - BCH Codes,
+/// for more details.
+///
+/// # Arguments
+/// * `z`     - Array of `PARAM_DELTA + 1` elements, the polynomial z(x).
+/// * `error` - Array of `PARAM_N1` bytes storing the error positions.
+///
+/// # Returns
+/// Array of `PARAM_N1` elements containing the error values.
+pub fn compute_error_values(z: &[u16], error: &[u8]) -> Vec<u16> {
+    let mut beta_j = [0u16; PARAM_DELTA];
+    let mut e_j = [0u16; PARAM_DELTA];
+    let mut error_values = vec![0u16; PARAM_N1];
+
+    // Compute the beta_{j_i}
+    let mut delta_counter: u16 = 0;
+    for i in 0..PARAM_N1 {
+        let mut found: u16 = 0;
+        let mask1: u16 = mask_nonzero_i32(error[i] as i32); // error[i] != 0
+        for j in 0..PARAM_DELTA {
+            let xorv = (j as i32) ^ (delta_counter as i32);
+            let mask2: u16 = !mask_nonzero_i32(xorv); // j == delta_counter
+            beta_j[j] = beta_j[j].wrapping_add(mask1 & mask2 & GF_EXP[i]);
+            found = found.wrapping_add(mask1 & mask2 & 1);
+        }
+        delta_counter = delta_counter.wrapping_add(found);
+    }
+    let delta_real_value = delta_counter;
+
+    // Compute the e_{j_i}
+    for i in 0..PARAM_DELTA {
+        let mut tmp1: u16 = 1;
+        let mut tmp2: u16 = 1;
+        let inverse = gf_inverse(beta_j[i]);
+        let mut inverse_power_j: u16 = 1;
+
+        for j in 1..=PARAM_DELTA {
+            inverse_power_j = gf_mul(inverse_power_j, inverse);
+            tmp1 ^= gf_mul(inverse_power_j, z[j]);
+        }
+        for k in 1..PARAM_DELTA {
+            tmp2 = gf_mul(tmp2, 1 ^ gf_mul(inverse, beta_j[(i + k) % PARAM_DELTA]));
+        }
+
+        // mask1 = 0xFFFF if i < delta_real_value, else 0x0000
+        let diff: i32 = (i as i32) - (delta_real_value as i32);
+        let mask1: u16 = (diff >> 15) as u16;
+
+        e_j[i] = mask1 & gf_mul(tmp1, gf_inverse(tmp2));
+    }
+
+    // Place the delta e_{j_i} values at the right coordinates of the output vector
+    let mut delta_counter: u16 = 0;
+    for i in 0..PARAM_N1 {
+        let mut found: u16 = 0;
+        let mask1: u16 = mask_nonzero_i32(error[i] as i32); // error[i] != 0
+        for j in 0..PARAM_DELTA {
+            let xorv = (j as i32) ^ (delta_counter as i32);
+            let mask2: u16 = !mask_nonzero_i32(xorv); // j == delta_counter
+            error_values[i] = error_values[i].wrapping_add(mask1 & mask2 & e_j[j]);
+            found = found.wrapping_add(mask1 & mask2 & 1);
+        }
+        delta_counter = delta_counter.wrapping_add(found);
+    }
+
+    error_values
+}

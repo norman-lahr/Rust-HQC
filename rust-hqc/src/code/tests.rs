@@ -22,6 +22,7 @@ unsafe extern "C" {
     fn compute_elp(sigma: *mut u16, syndromes: *const u16) -> u16;
     fn compute_roots(error: *mut u8, sigma: *mut u16);
     fn compute_z_poly(z: *mut u16, sigma: *const u16, degree: u16, syndromes: *const u16);
+    fn compute_error_values(error_values: *mut u16, z: *const u16, error: *const u8);
 }
 
 /// Safe wrapper around the C `encode` function.
@@ -118,6 +119,15 @@ pub fn compute_z_poly_ref(sigma: &[u16], degree: u16, syndromes: &[u16]) -> [u16
         compute_z_poly(z.as_mut_ptr(), sigma.as_ptr(), degree, syndromes.as_ptr());
     }
     z
+}
+
+/// Safe wrapper around the C `compute_error_values` function.
+pub fn compute_error_values_ref(z: &[u16], error: &[u8]) -> Vec<u16> {
+    let mut error_values = vec![0u16; PARAM_N1];
+    unsafe {
+        compute_error_values(error_values.as_mut_ptr(), z.as_ptr(), error.as_ptr());
+    }
+    error_values
 }
 
 #[test]
@@ -332,5 +342,24 @@ fn test_compute_z_poly() {
         let z_ref = compute_z_poly_ref(&sigma, degree, &syndromes);
 
         assert_eq!(z, z_ref, "Rust and C must agree at iteration {}", i);
+    }
+}
+
+#[test]
+fn test_compute_error_values() {
+    const TEST_ROUNDS: u64 = 100;
+    let mut rng = StdRng::seed_from_u64(4u64);
+    for i in 0..TEST_ROUNDS {
+        let z: Vec<u16> = (0..PARAM_DELTA + 1)
+            .map(|_| rng.random_range(0..=u16::MAX))
+            .collect();
+        let error: Vec<u8> = (0..PARAM_N1)
+            .map(|_| rng.random_range(0..=u8::MAX))
+            .collect();
+
+        let ev = crate::code::reed_solomon::compute_error_values(&z, &error);
+        let ev_ref = compute_error_values_ref(&z, &error);
+
+        assert_eq!(ev, ev_ref, "Rust and C must agree at iteration {}", i);
     }
 }
