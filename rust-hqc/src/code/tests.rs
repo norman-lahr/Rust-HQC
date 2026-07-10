@@ -23,6 +23,7 @@ unsafe extern "C" {
     fn compute_roots(error: *mut u8, sigma: *mut u16);
     fn compute_z_poly(z: *mut u16, sigma: *const u16, degree: u16, syndromes: *const u16);
     fn compute_error_values(error_values: *mut u16, z: *const u16, error: *const u8);
+    fn correct_errors(cdw: *mut u8, error_values: *const u16);
 }
 
 /// Safe wrapper around the C `encode` function.
@@ -128,6 +129,15 @@ pub fn compute_error_values_ref(z: &[u16], error: &[u8]) -> Vec<u16> {
         compute_error_values(error_values.as_mut_ptr(), z.as_ptr(), error.as_ptr());
     }
     error_values
+}
+
+/// Safe wrapper around the C `correct_errors` function.
+pub fn correct_errors_ref(cdw: &[u8], error_values: &[u16]) -> Vec<u8> {
+    let mut cdw_copy = cdw.to_vec();
+    unsafe {
+        correct_errors(cdw_copy.as_mut_ptr(), error_values.as_ptr());
+    }
+    cdw_copy
 }
 
 #[test]
@@ -361,5 +371,26 @@ fn test_compute_error_values() {
         let ev_ref = compute_error_values_ref(&z, &error);
 
         assert_eq!(ev, ev_ref, "Rust and C must agree at iteration {}", i);
+    }
+}
+
+#[test]
+fn test_correct_errors() {
+    const TEST_ROUNDS: u64 = 100;
+    let mut rng = StdRng::seed_from_u64(4u64);
+    for i in 0..TEST_ROUNDS {
+        let cdw: Vec<u8> = (0..PARAM_N1)
+            .map(|_| rng.random_range(0..=u8::MAX))
+            .collect();
+        let error_values: Vec<u16> = (0..PARAM_N1)
+            .map(|_| rng.random_range(0..=u16::MAX))
+            .collect();
+
+        let mut cdw_rs = cdw.clone();
+        crate::code::reed_solomon::correct_errors(&mut cdw_rs, &error_values);
+
+        let cdw_ref = correct_errors_ref(&cdw, &error_values);
+
+        assert_eq!(cdw_rs, cdw_ref, "Rust and C must agree at iteration {}", i);
     }
 }

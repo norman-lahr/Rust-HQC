@@ -946,3 +946,14 @@ pub fn compute_error_values(z: &[u16], error: &[u8]) -> Vec<u16> {
 
     error_values
 }
+
+/// Corrects the errors in the received codeword.
+///
+/// # Arguments
+/// * `cdw`          - Codeword of `PARAM_N1` bytes, corrected in place.
+/// * `error_values` - Array of `PARAM_N1` elements storing the error values.
+pub fn correct_errors(cdw: &mut [u8], error_values: &[u16]) {
+    for i in 0..PARAM_N1 {
+        cdw[i] ^= error_values[i] as u8;
+    }
+}
