@@ -827,3 +827,43 @@ pub fn compute_roots(error: &mut [u8], sigma: &[u16]) {
     let w = fft(sigma, PARAM_DELTA + 1);
     fft_retrieve_error_poly(error, &w);
 }
+
+/// Computes the polynomial z(x).
+///
+/// See Lin & Costello, "Error Control Coding", Chapter 6 - BCH Codes,
+/// for more details.
+///
+/// # Arguments
+/// * `sigma`     - Array of `2^PARAM_FFT` elements, the error locator polynomial.
+/// * `degree`    - Degree of polynomial `sigma`.
+/// * `syndromes` - Array of `2*PARAM_DELTA` syndromes.
+///
+/// # Returns
+/// Array of `PARAM_DELTA + 1` elements: the polynomial z(x).
+pub fn compute_z_poly(sigma: &[u16], degree: u16, syndromes: &[u16]) -> [u16; PARAM_DELTA + 1] {
+    let mut z = [0u16; PARAM_DELTA + 1];
+    z[0] = 1;
+
+    for i in 1..PARAM_DELTA + 1 {
+        // mask = 0xFFFF if i <= degree, else 0x0000
+        // matches C: -((uint16_t)(i - degree - 1) >> 15)
+        let diff: u16 = (i as u16).wrapping_sub(degree).wrapping_sub(1);
+        let mask: u16 = (diff >> 15).wrapping_neg();
+        z[i] = mask & sigma[i];
+    }
+
+    z[1] ^= syndromes[0];
+
+    for i in 2..=PARAM_DELTA {
+        let diff: u16 = (i as u16).wrapping_sub(degree).wrapping_sub(1);
+        let mask: u16 = (diff >> 15).wrapping_neg();
+
+        z[i] ^= mask & syndromes[i - 1];
+
+        for j in 1..i {
+            z[i] ^= mask & gf_mul(sigma[j], syndromes[i - j - 1]);
+        }
+    }
+
+    z
+}
