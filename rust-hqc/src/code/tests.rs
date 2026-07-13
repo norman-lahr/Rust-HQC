@@ -24,6 +24,7 @@ unsafe extern "C" {
     fn compute_z_poly(z: *mut u16, sigma: *const u16, degree: u16, syndromes: *const u16);
     fn compute_error_values(error_values: *mut u16, z: *const u16, error: *const u8);
     fn correct_errors(cdw: *mut u8, error_values: *const u16);
+    fn reed_solomon_decode(msg: *mut u64, cdw: *mut u64);
 }
 
 /// Safe wrapper around the C `encode` function.
@@ -138,6 +139,16 @@ pub fn correct_errors_ref(cdw: &[u8], error_values: &[u16]) -> Vec<u8> {
         correct_errors(cdw_copy.as_mut_ptr(), error_values.as_ptr());
     }
     cdw_copy
+}
+
+/// Safe wrapper around the C `reed_solomon_decode` function.
+pub fn reed_solomon_decode_ref(cdw: &[u64]) -> Vec<u64> {
+    let mut cdw_copy = cdw.to_vec(); // C signature takes non-const uint64_t*
+    let mut msg = vec![0u64; VEC_K_SIZE_64];
+    unsafe {
+        reed_solomon_decode(msg.as_mut_ptr(), cdw_copy.as_mut_ptr());
+    }
+    msg
 }
 
 #[test]
@@ -392,5 +403,20 @@ fn test_correct_errors() {
         let cdw_ref = correct_errors_ref(&cdw, &error_values);
 
         assert_eq!(cdw_rs, cdw_ref, "Rust and C must agree at iteration {}", i);
+    }
+}
+
+#[test]
+fn test_reed_solomon_decode() {
+    const TEST_ROUNDS: u64 = 100;
+    let mut rng = StdRng::seed_from_u64(4u64);
+    for i in 0..TEST_ROUNDS {
+        let msg_in: [u64; VEC_K_SIZE_64] = std::array::from_fn(|_| rng.random_range(0..=u64::MAX));
+        let cdw = crate::code::reed_solomon::reed_solomon_encode(&msg_in);
+
+        let msg_rs = crate::code::reed_solomon::reed_solomon_decode(&cdw);
+        let msg_ref = reed_solomon_decode_ref(&cdw);
+
+        assert_eq!(msg_rs, msg_ref, "Rust and C must agree at iteration {}", i);
     }
 }

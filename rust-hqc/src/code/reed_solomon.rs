@@ -1,7 +1,8 @@
 use crate::fft::{fft, fft_retrieve_error_poly};
 use crate::gf::{gf_inverse, gf_mul, GF_EXP, GF_LOG};
 use crate::parameters::{
-    PARAM_DELTA, PARAM_G, PARAM_GF_MUL_ORDER, PARAM_K, PARAM_N1, RS_POLY_COEFS, VEC_N1_SIZE_64,
+    PARAM_DELTA, PARAM_FFT, PARAM_G, PARAM_GF_MUL_ORDER, PARAM_K, PARAM_M, PARAM_N1, RS_POLY_COEFS,
+    VEC_K_SIZE_64, VEC_N1_SIZE_64,
 };
 
 #[cfg(feature = "hqc-1")]
@@ -956,4 +957,67 @@ pub fn correct_errors(cdw: &mut [u8], error_values: &[u16]) {
     for i in 0..PARAM_N1 {
         cdw[i] ^= error_values[i] as u8;
     }
+}
+
+/// Decodes the received word.
+///
+/// This function relies on six steps:
+/// 1. Compute the `2*PARAM_DELTA` syndromes.
+/// 2. Compute the error-locator polynomial σ(x).
+/// 3. Use an additive FFT to find the roots of σ(x) (the error locations) and take their inverses.
+/// 4. Compute the error-evaluator polynomial z(x).
+/// 5. Compute the error values at each located position.
+/// 6. Correct the received polynomial by subtracting the error values.
+///
+/// See Lin & Costello, "Error Control Coding: Fundamentals and
+/// Applications" for a complete picture on Reed-Solomon decoding.
+///
+/// # Arguments
+/// * `cdw` - Received word of `VEC_N1_SIZE_64` 64-bit words.
+///
+/// # Returns
+/// Decoded message of `VEC_K_SIZE_64` 64-bit words.
+pub fn reed_solomon_decode(cdw: &[u64]) -> Vec<u64> {
+    // Copy the vector into an array of bytes
+    let cdw_bytes_full: Vec<u8> = cdw.iter().flat_map(|w| w.to_le_bytes()).collect();
+    let mut cdw_bytes: Vec<u8> = cdw_bytes_full[..PARAM_N1].to_vec();
+
+    // Step 1: compute the 2*PARAM_DELTA syndromes
+    let syndromes = compute_syndromes(&cdw_bytes);
+
+    // Step 2: compute the error locator polynomial sigma
+    // Sigma's degree is at most PARAM_DELTA but the FFT requires the extra room
+    let (sigma_short, deg) = compute_elp(&syndromes);
+    let mut sigma = vec![0u16; 1usize << PARAM_FFT];
+    sigma[..sigma_short.len()].copy_from_slice(&sigma_short);
+
+    // Step 3: compute the error polynomial `error` (roots of sigma via FFT)
+    let mut error = vec![0u8; 1usize << PARAM_M];
+    compute_roots(&mut error, &sigma);
+
+    // Step 4: compute the polynomial z(x)
+    let z = compute_z_poly(&sigma, deg, &syndromes);
+
+    // Step 5: compute the error values
+    let error_values = compute_error_values(&z, &error);
+
+    // Step 6: correct the errors
+    correct_errors(&mut cdw_bytes, &error_values);
+
+    // Retrieve the message from the decoded codeword
+    let msg_bytes = &cdw_bytes[(PARAM_G - 1)..(PARAM_G - 1) + PARAM_K];
+
+    // Repack into u64 words
+    let word_count = VEC_K_SIZE_64;
+    let mut msg = vec![0u64; word_count];
+    for (i, chunk) in msg_bytes.chunks(8).enumerate() {
+        let mut buf = [0u8; 8];
+        buf[..chunk.len()].copy_from_slice(chunk);
+        msg[i] = u64::from_le_bytes(buf);
+    }
+
+    // Zeroize sensitive data TODO use specific zerorization crate
+    cdw_bytes.iter_mut().for_each(|b| *b = 0);
+
+    msg
 }
