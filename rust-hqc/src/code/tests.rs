@@ -27,6 +27,7 @@ unsafe extern "C" {
     fn reed_solomon_decode(msg: *mut u64, cdw: *mut u64);
 
     fn code_encode(em: *mut u64, m: *const u64);
+    fn code_decode(m: *mut u64, em: *const u64);
 }
 
 /// Safe wrapper around the C `encode` function.
@@ -125,15 +126,6 @@ pub fn compute_z_poly_ref(sigma: &[u16], degree: u16, syndromes: &[u16]) -> [u16
     z
 }
 
-/// Safe wrapper around the C `code_encode` function.
-pub fn code_encode_ref(m: &[u64]) -> Vec<u64> {
-    let mut em = vec![0u64; VEC_N1N2_SIZE_64];
-    unsafe {
-        code_encode(em.as_mut_ptr(), m.as_ptr());
-    }
-    em
-}
-
 /// Safe wrapper around the C `compute_error_values` function.
 pub fn compute_error_values_ref(z: &[u16], error: &[u8]) -> Vec<u16> {
     let mut error_values = vec![0u16; PARAM_N1];
@@ -160,6 +152,24 @@ pub fn reed_solomon_decode_ref(cdw: &[u64]) -> Vec<u64> {
         reed_solomon_decode(msg.as_mut_ptr(), cdw_copy.as_mut_ptr());
     }
     msg
+}
+
+/// Safe wrapper around the C `code_encode` function.
+pub fn code_encode_ref(m: &[u64]) -> Vec<u64> {
+    let mut em = vec![0u64; VEC_N1N2_SIZE_64];
+    unsafe {
+        code_encode(em.as_mut_ptr(), m.as_ptr());
+    }
+    em
+}
+
+/// Safe wrapper around the C `code_decode` function.
+pub fn code_decode_ref(em: &[u64]) -> Vec<u64> {
+    let mut m = vec![0u64; VEC_K_SIZE_64];
+    unsafe {
+        code_decode(m.as_mut_ptr(), em.as_ptr());
+    }
+    m
 }
 
 #[test]
@@ -443,5 +453,20 @@ fn test_code_encode() {
         let em_ref = code_encode_ref(&m);
 
         assert_eq!(em, em_ref, "Rust and C must agree at iteration {}", i);
+    }
+}
+
+#[test]
+fn test_code_decode() {
+    const TEST_ROUNDS: u64 = 100;
+    let mut rng = StdRng::seed_from_u64(4u64);
+    for i in 0..TEST_ROUNDS {
+        let m_in: [u64; VEC_K_SIZE_64] = std::array::from_fn(|_| rng.random_range(0..=u64::MAX));
+        let em = crate::code::code_encode(&m_in);
+
+        let m = crate::code::code_decode(&em);
+        let m_ref = code_decode_ref(&em);
+
+        assert_eq!(m, m_ref, "Rust and C must agree at iteration {}", i);
     }
 }

@@ -1,4 +1,4 @@
-use crate::parameters::VEC_N1_SIZE_64;
+use crate::parameters::{VEC_N1N2_SIZE_64, VEC_N1_SIZE_64};
 
 mod reed_muller;
 mod reed_solomon;
@@ -24,6 +24,26 @@ pub fn code_encode(m: &[u64]) -> Vec<u64> {
     tmp.iter_mut().for_each(|w| *w = 0);
 
     em.to_vec()
+}
+
+/// Decodes the codeword `em` to a message `m` using the concatenated code.
+///
+/// # Arguments
+/// * `em` - Codeword of `VEC_N1N2_SIZE_64` 64-bit words.
+///
+/// # Returns
+/// Decoded message of `VEC_K_SIZE_64` 64-bit words.
+pub fn code_decode(em: &[u64]) -> Vec<u64> {
+    let em_arr: [u64; VEC_N1N2_SIZE_64] =
+        em.try_into().expect("em must have VEC_N1N2_SIZE_64 words");
+
+    let mut tmp = reed_muller::reed_muller_decode(&em_arr);
+    let m = reed_solomon::reed_solomon_decode(&tmp);
+
+    // Zeroize sensitive data
+    tmp.iter_mut().for_each(|w| *w = 0);
+
+    m
 }
 
 #[cfg(test)]
