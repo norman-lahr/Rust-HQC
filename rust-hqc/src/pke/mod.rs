@@ -1,10 +1,10 @@
-use crate::code::code_encode;
+use crate::code::{code_decode, code_encode};
 use crate::gf2x::vect_mul;
 use crate::parameters::{
     PARAM_OMEGA, PARAM_OMEGA_E, PARAM_OMEGA_R, SEED_BYTES, VEC_N1N2_SIZE_64, VEC_N_SIZE_64,
     VEC_N_SIZE_BYTES,
 };
-use crate::parsing::hqc_ek_pke_from_string;
+use crate::parsing::{hqc_dk_pke_from_string, hqc_ek_pke_from_string};
 use crate::symmetric::{hash_i, xof_init};
 use crate::vector::{
     vect_add_into, vect_sample_fixed_weight1, vect_sample_fixed_weight2, vect_set_random,
@@ -148,6 +148,53 @@ pub fn hqc_pke_encrypt(ek_pke: &[u8], m: &[u64], theta: &[u8; SEED_BYTES]) -> Ci
     tmp_trunc.iter_mut().for_each(|w| *w = 0);
 
     c_pke
+}
+
+/// Decrypts a ciphertext using the HQC public-key encryption (PKE) scheme.
+///
+/// Uses the given decryption key (`dk_pke`) to decrypt the ciphertext
+/// `c_pke`, recovering the original message `m`.
+///
+/// Constant-time with respect to `dk_pke` and `c_pke`: delegates entirely
+/// to already constant-time subroutines (`hqc_dk_pke_from_string`,
+/// `vect_mul`, `vect_truncate`, `vect_add`, `code_decode`). Sensitive
+/// intermediate data is zeroized before returning.
+///
+/// # Arguments
+/// * `dk_pke` - Decryption key.
+/// * `c_pke`  - Input PKE ciphertext.
+///
+/// # Returns
+/// The decrypted message `m` of `VEC_K_SIZE_64` words.
+pub fn hqc_pke_decrypt(dk_pke: &[u8; SEED_BYTES], c_pke: &CiphertextPke) -> Vec<u64> {
+    // Parse decryption key dk_pke
+    let mut y = hqc_dk_pke_from_string(dk_pke);
+
+    // Compute u.y
+    let uy = vect_mul(&y, &c_pke.u);
+
+    // Truncate(u.y)
+    let mut tmp1 = [0u64; VEC_N_SIZE_64];
+    tmp1.copy_from_slice(&uy);
+    vect_truncate(&mut tmp1);
+
+    // Compute v - Truncate(u.y)
+    let mut tmp2 = [0u64; VEC_N_SIZE_64];
+    vect_add_into(
+        &mut tmp2[..VEC_N1N2_SIZE_64],
+        &c_pke.v,
+        &tmp1[..VEC_N1N2_SIZE_64],
+    );
+
+    // Compute plaintext m
+    let m = code_decode(&tmp2[..VEC_N1N2_SIZE_64]);
+
+    // Zeroize sensitive data
+    y.iter_mut().for_each(|w| *w = 0);
+    tmp1.iter_mut().for_each(|w| *w = 0);
+    tmp2.iter_mut().for_each(|w| *w = 0);
+
+    m
 }
 
 #[cfg(test)]
