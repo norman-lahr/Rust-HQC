@@ -1,11 +1,19 @@
+use crate::code::code_encode;
 use crate::gf2x::vect_mul;
-use crate::parameters::{PARAM_OMEGA, SEED_BYTES, VEC_N_SIZE_64, VEC_N_SIZE_BYTES};
+use crate::parameters::{
+    PARAM_OMEGA, PARAM_OMEGA_E, PARAM_OMEGA_R, SEED_BYTES, VEC_N1N2_SIZE_64, VEC_N_SIZE_64,
+    VEC_N_SIZE_BYTES,
+};
+use crate::parsing::hqc_ek_pke_from_string;
 use crate::symmetric::{hash_i, xof_init};
-use crate::vector::{vect_add_into, vect_sample_fixed_weight1, vect_set_random};
+use crate::vector::{
+    vect_add_into, vect_sample_fixed_weight1, vect_sample_fixed_weight2, vect_set_random,
+    vect_truncate,
+};
 
 /// Unpack an `u64` slice into a `Vec<u8>`, little-endian.
 /// TODO Add helper module
-fn u64_words_to_bytes(words: &[u64]) -> Vec<u8> {
+pub fn u64_words_to_bytes(words: &[u64]) -> Vec<u8> {
     words.iter().flat_map(|w| w.to_le_bytes()).collect()
 }
 
@@ -58,6 +66,88 @@ pub fn hqc_pke_keygen(seed: &[u8; SEED_BYTES]) -> (Vec<u8>, Vec<u8>) {
     s_final.iter_mut().for_each(|w| *w = 0);
 
     (ek_pke, dk_pke)
+}
+
+/// PKE ciphertext for the HQC scheme.
+#[repr(C)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CiphertextPke {
+    pub u: [u64; VEC_N_SIZE_64],
+    pub v: [u64; VEC_N1N2_SIZE_64],
+}
+
+impl CiphertextPke {
+    pub fn zeroed() -> Self {
+        Self {
+            u: [0u64; VEC_N_SIZE_64],
+            v: [0u64; VEC_N1N2_SIZE_64],
+        }
+    }
+}
+
+impl Default for CiphertextPke {
+    fn default() -> Self {
+        CiphertextPke {
+            u: [0u64; VEC_N_SIZE_64],
+            v: [0u64; VEC_N1N2_SIZE_64],
+        }
+    }
+}
+
+/// Encrypts a message using the HQC public-key encryption (PKE) scheme.
+///
+/// Uses the given encryption key (`ek_pke`) and encryption randomness
+/// (`theta`) to encrypt the message `m`, producing a ciphertext `c_pke`.
+///
+/// # Arguments
+/// * `ek_pke` - Encryption key.
+/// * `m`      - Message to be encrypted, `VEC_K_SIZE_64` words.
+/// * `theta`  - Encryption randomness, `SEED_BYTES` bytes.
+///
+/// # Returns
+/// The PKE ciphertext.
+pub fn hqc_pke_encrypt(ek_pke: &[u8], m: &[u64], theta: &[u8; SEED_BYTES]) -> CiphertextPke {
+    let mut c_pke = CiphertextPke::zeroed();
+
+    // Initialize Xof using theta
+    let mut theta_reader = xof_init(theta);
+    //
+    // Retrieve h and s from public key
+    let (h, s) = hqc_ek_pke_from_string(ek_pke); //
+
+    // Generate r2, e and r1
+    let mut r2 = vect_sample_fixed_weight2(&mut theta_reader, PARAM_OMEGA_R);
+    let mut e = vect_sample_fixed_weight2(&mut theta_reader, PARAM_OMEGA_E);
+    let mut r1 = vect_sample_fixed_weight2(&mut theta_reader, PARAM_OMEGA_R);
+
+    // Compute u = r1 + r2.h
+    let r2_h = vect_mul(&r2, &h);
+    vect_add_into(&mut c_pke.u, &r1, &r2_h);
+
+    // Compute v = C.encode(m)
+    let encoded = code_encode(m);
+    c_pke.v.copy_from_slice(&encoded);
+
+    // Compute v = C.encode(m) + Truncate(s.r2 + e)
+    let r2_s = vect_mul(&r2, &s);
+    let mut tmp = [0u64; VEC_N_SIZE_64];
+    vect_add_into(&mut tmp, &e, &r2_s);
+    let mut tmp_trunc = [0u64; VEC_N_SIZE_64];
+    tmp_trunc.copy_from_slice(&tmp);
+    vect_truncate(&mut tmp_trunc);
+
+    let mut v_final = [0u64; VEC_N1N2_SIZE_64];
+    vect_add_into(&mut v_final, &c_pke.v, &tmp_trunc[..VEC_N1N2_SIZE_64]);
+    c_pke.v = v_final;
+
+    // Zeroize sensitive data
+    r1.iter_mut().for_each(|w| *w = 0);
+    r2.iter_mut().for_each(|w| *w = 0);
+    e.iter_mut().for_each(|w| *w = 0);
+    tmp.iter_mut().for_each(|w| *w = 0);
+    tmp_trunc.iter_mut().for_each(|w| *w = 0);
+
+    c_pke
 }
 
 #[cfg(test)]
