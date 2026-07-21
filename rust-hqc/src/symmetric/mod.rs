@@ -1,6 +1,6 @@
 use crate::parameters::{PARAM_SECURITY_BYTES, SALT_BYTES, SEED_BYTES};
 use sha3::digest::XofReader;
-use sha3::{Digest, Sha3_512, Shake256};
+use sha3::{Digest, Sha3_256, Sha3_512, Shake256};
 
 /// Domain separator for HQC prng function.
 pub const PRNG_DOMAIN: u8 = 0;
@@ -71,6 +71,22 @@ pub fn hash_g(
     hasher.update(m);
     hasher.update(salt);
     hasher.update([g_domain]);
+    hasher.finalize().into()
+}
+
+/// Computes the hash function H (SHA3-256) with domain separation.
+///
+/// # Arguments
+/// * `ek_kem` - Encapsulation key of the KEM, `PUBLIC_KEY_BYTES` bytes.
+///
+/// # Returns
+/// 32-byte SHA3-256 hash output.
+pub fn hash_h(ek_kem: &[u8]) -> [u8; 32] {
+    let h_domain = H_FCT_DOMAIN;
+
+    let mut hasher = Sha3_256::new();
+    hasher.update(ek_kem);
+    hasher.update([h_domain]);
     hasher.finalize().into()
 }
 

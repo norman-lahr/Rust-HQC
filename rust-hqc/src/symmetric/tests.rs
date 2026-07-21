@@ -1,10 +1,11 @@
-use crate::parameters::{PARAM_SECURITY_BYTES, SALT_BYTES, SEED_BYTES};
+use crate::parameters::{PARAM_SECURITY_BYTES, PUBLIC_KEY_BYTES, SALT_BYTES, SEED_BYTES};
 use rand::prelude::*;
 use rand::{rngs::StdRng, SeedableRng};
 
 unsafe extern "C" {
     fn hash_i(output: *mut u8, seed: *const u8);
     fn hash_g(output: *mut u8, hash_ek_kem: *const u8, m: *const u8, salt: *const u8);
+    fn hash_h(output: *mut u8, ek_kem: *const u8);
 }
 
 /// Safe wrapper around the C hash_i function
@@ -34,6 +35,15 @@ pub fn hash_g_ref(
     output
 }
 
+/// Safe wrapper around the C `hash_h` function.
+pub fn hash_h_ref(ek_kem: &[u8]) -> [u8; 32] {
+    let mut output = [0u8; 32];
+    unsafe {
+        hash_h(output.as_mut_ptr(), ek_kem.as_ptr());
+    }
+    output
+}
+
 #[test]
 fn test_hash_i() {
     let seed = b"DEADBEEFDEADBEEFDEADBEEFDEADBEEF";
@@ -43,7 +53,7 @@ fn test_hash_i() {
 }
 
 #[test]
-fn test_rust_matches_ref() {
+fn test_hash_g() {
     const TEST_ROUNDS: u64 = 100;
     let mut rng = StdRng::seed_from_u64(4u64);
     for i in 0..TEST_ROUNDS {
@@ -56,6 +66,26 @@ fn test_rust_matches_ref() {
 
         assert_eq!(
             output, output_ref,
+            "Rust and C must agree at iteration {}",
+            i
+        );
+    }
+}
+
+#[test]
+fn test_hash_h() {
+    const TEST_ROUNDS: u64 = 100;
+    let mut rng = StdRng::seed_from_u64(4u64);
+    for i in 0..TEST_ROUNDS {
+        let ek_kem: Vec<u8> = (0..PUBLIC_KEY_BYTES)
+            .map(|_| rng.random_range(0..=u8::MAX))
+            .collect();
+
+        let output_rs = crate::symmetric::hash_h(&ek_kem);
+        let output_ref = hash_h_ref(&ek_kem);
+
+        assert_eq!(
+            output_rs, output_ref,
             "Rust and C must agree at iteration {}",
             i
         );
