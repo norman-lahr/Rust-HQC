@@ -73,14 +73,14 @@ pub fn hqc_pke_keygen(seed: &[u8; SEED_BYTES]) -> (Vec<u8>, Vec<u8>) {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CiphertextPke {
     pub u: [u64; VEC_N_SIZE_64],
-    pub v: [u64; VEC_N1N2_SIZE_64],
+    pub v: [u64; VEC_N_SIZE_64],
 }
 
 impl CiphertextPke {
     pub fn zeroed() -> Self {
         Self {
             u: [0u64; VEC_N_SIZE_64],
-            v: [0u64; VEC_N1N2_SIZE_64],
+            v: [0u64; VEC_N_SIZE_64],
         }
     }
 }
@@ -89,7 +89,7 @@ impl Default for CiphertextPke {
     fn default() -> Self {
         CiphertextPke {
             u: [0u64; VEC_N_SIZE_64],
-            v: [0u64; VEC_N1N2_SIZE_64],
+            v: [0u64; VEC_N_SIZE_64],
         }
     }
 }
@@ -126,7 +126,7 @@ pub fn hqc_pke_encrypt(ek_pke: &[u8], m: &[u64], theta: &[u8; SEED_BYTES]) -> Ci
 
     // Compute v = C.encode(m)
     let encoded = code_encode(m);
-    c_pke.v.copy_from_slice(&encoded);
+    c_pke.v[..VEC_N1N2_SIZE_64].copy_from_slice(&encoded);
 
     // Compute v = C.encode(m) + Truncate(s.r2 + e)
     let r2_s = vect_mul(&r2, &s);
@@ -137,8 +137,13 @@ pub fn hqc_pke_encrypt(ek_pke: &[u8], m: &[u64], theta: &[u8; SEED_BYTES]) -> Ci
     vect_truncate(&mut tmp_trunc);
 
     let mut v_final = [0u64; VEC_N1N2_SIZE_64];
-    vect_add_into(&mut v_final, &c_pke.v, &tmp_trunc[..VEC_N1N2_SIZE_64]);
-    c_pke.v = v_final;
+    vect_add_into(
+        &mut v_final,
+        &c_pke.v[..VEC_N1N2_SIZE_64],
+        &tmp_trunc[..VEC_N1N2_SIZE_64],
+    );
+    c_pke.v[..VEC_N1N2_SIZE_64].copy_from_slice(&v_final);
+    // c_pke.v[..VEC_N1N2_SIZE_64] = v_final;
 
     // Zeroize sensitive data
     r1.iter_mut().for_each(|w| *w = 0);
@@ -182,7 +187,7 @@ pub fn hqc_pke_decrypt(dk_pke: &[u8; SEED_BYTES], c_pke: &CiphertextPke) -> Vec<
     let mut tmp2 = [0u64; VEC_N_SIZE_64];
     vect_add_into(
         &mut tmp2[..VEC_N1N2_SIZE_64],
-        &c_pke.v,
+        &c_pke.v[..VEC_N1N2_SIZE_64],
         &tmp1[..VEC_N1N2_SIZE_64],
     );
 
