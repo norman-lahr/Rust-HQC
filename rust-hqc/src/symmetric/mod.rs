@@ -1,4 +1,8 @@
-use crate::parameters::{PARAM_SECURITY_BYTES, SALT_BYTES, SEED_BYTES};
+use crate::kem::CiphertextKem;
+use crate::parameters::{
+    PARAM_SECURITY_BYTES, SALT_BYTES, SEED_BYTES, VEC_N1N2_SIZE_BYTES, VEC_N_SIZE_BYTES,
+};
+use crate::pke::u64_words_to_bytes;
 use sha3::digest::XofReader;
 use sha3::{Digest, Sha3_256, Sha3_512, Shake256};
 
@@ -87,6 +91,35 @@ pub fn hash_h(ek_kem: &[u8]) -> [u8; 32] {
     let mut hasher = Sha3_256::new();
     hasher.update(ek_kem);
     hasher.update([h_domain]);
+    hasher.finalize().into()
+}
+
+/// Computes the hash function J (SHA3-256) with domain separation.
+///
+/// # Arguments
+/// * `hash_ek_kem` - Hash of the KEM encapsulation key, `SEED_BYTES` bytes.
+/// * `sigma`       - The string sigma, `PARAM_SECURITY_BYTES` bytes.
+/// * `c_kem`       - Ciphertext struct (includes `c_pke.u`, `c_pke.v`, and `salt`).
+///
+/// # Returns
+/// 32-byte SHA3-256 hash output.
+pub fn hash_j(
+    hash_ek_kem: &[u8; SEED_BYTES],
+    sigma: &[u8; PARAM_SECURITY_BYTES],
+    c_kem: &CiphertextKem,
+) -> [u8; 32] {
+    let k_domain = J_FCT_DOMAIN;
+
+    let u_bytes = u64_words_to_bytes(&c_kem.c_pke.u);
+    let v_bytes = u64_words_to_bytes(&c_kem.c_pke.v);
+
+    let mut hasher = Sha3_256::new();
+    hasher.update(hash_ek_kem);
+    hasher.update(sigma);
+    hasher.update(&u_bytes[..VEC_N_SIZE_BYTES]);
+    hasher.update(&v_bytes[..VEC_N1N2_SIZE_BYTES]);
+    hasher.update(&c_kem.salt);
+    hasher.update([k_domain]);
     hasher.finalize().into()
 }
 
