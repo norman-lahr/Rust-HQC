@@ -1,3 +1,4 @@
+pub mod api;
 pub mod code;
 pub mod fft;
 pub mod gf;
