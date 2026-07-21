@@ -1,5 +1,5 @@
+use crate::api::*;
 use std::ops::Div;
-
 /// Creates a bitmask with `a % size` bits set.
 /// Equivalent to C: `#define BITMASK(a, size) ((1UL << (a % size)) - 1)`
 pub const fn bitmask(a: usize, size: usize) -> u64 {
@@ -40,14 +40,14 @@ pub const PARAM_DFR_EXP: usize = 128;
 // Key and ciphertext sizes
 // -------------------------------------------------------
 
-// /// Size of the secret key in bytes.
-// pub const SECRET_KEY_BYTES: usize = CRYPTO_SECRETKEYBYTES;
-// /// Size of the public key in bytes.
-// pub const PUBLIC_KEY_BYTES: usize = CRYPTO_PUBLICKEYBYTES;
-// /// Size of the shared secret in bytes.
-// pub const SHARED_SECRET_BYTES: usize = CRYPTO_BYTES;
-// /// Size of the ciphertext in bytes.
-// pub const CIPHERTEXT_BYTES: usize = CRYPTO_CIPHERTEXTBYTES;
+/// Size of the secret key in bytes.
+pub const SECRET_KEY_BYTES: usize = CRYPTO_SECRETKEYBYTES;
+/// Size of the public key in bytes.
+pub const PUBLIC_KEY_BYTES: usize = CRYPTO_PUBLICKEYBYTES;
+/// Size of the shared secret in bytes.
+pub const SHARED_SECRET_BYTES: usize = CRYPTO_BYTES;
+/// Size of the ciphertext in bytes.
+pub const CIPHERTEXT_BYTES: usize = CRYPTO_CIPHERTEXTBYTES;
 
 // -------------------------------------------------------
 // Vector sizes in bytes
