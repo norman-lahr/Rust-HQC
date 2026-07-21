@@ -1,4 +1,4 @@
-use crate::parameters::SEED_BYTES;
+use crate::parameters::{PARAM_SECURITY_BYTES, SALT_BYTES, SEED_BYTES};
 use sha3::digest::XofReader;
 use sha3::{Digest, Sha3_512, Shake256};
 
@@ -53,16 +53,25 @@ pub fn hash_i(seed: &[u8; SEED_BYTES]) -> [u8; 64] {
 /// Computes the hash function G (SHA3-512) with domain separation.
 ///
 /// # Arguments
-/// * `seed` - The input seed to be hashed.
+/// * `hash_ek_kem` - Hash of the KEM encapsulation key, `SEED_BYTES` bytes.
+/// * `m`           - Message bytes, `PARAM_SECURITY_BYTES` bytes.
+/// * `salt`        - Salt value, `SALT_BYTES` bytes.
 ///
 /// # Returns
-/// A 64-byte SHA3-512 hash output.
-pub fn hash_g(seed: &[u8; SEED_BYTES]) -> [u8; 64] {
+/// 64-byte SHA3-512 hash output.
+pub fn hash_g(
+    hash_ek_kem: &[u8; SEED_BYTES],
+    m: &[u8; PARAM_SECURITY_BYTES],
+    salt: &[u8; SALT_BYTES],
+) -> [u8; 64] {
     let g_domain = G_FCT_DOMAIN;
+
     let mut hasher = Sha3_512::new();
-    sha3::digest::Update::update(&mut hasher, seed);
-    sha3::digest::Update::update(&mut hasher, &[g_domain]);
-    sha3::digest::FixedOutput::finalize_fixed(hasher).into()
+    hasher.update(hash_ek_kem);
+    hasher.update(m);
+    hasher.update(salt);
+    hasher.update([g_domain]);
+    hasher.finalize().into()
 }
 
 #[cfg(test)]
