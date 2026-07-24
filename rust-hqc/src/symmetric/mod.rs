@@ -24,6 +24,45 @@ pub const I_FCT_DOMAIN: u8 = 2;
 /// Domain separator for the J(·) function in HQC.
 pub const J_FCT_DOMAIN: u8 = 3;
 
+/// SHAKE-256 with incremental API and domain separation.
+///
+/// Derived from the `SHAKE_256` construction. Initializes a SHAKE-256 XOF
+/// reader by absorbing entropy, a personalization string, and a domain
+/// separator, then finalizing into squeeze mode.
+///
+/// # Arguments
+/// * `entropy_input`          - Input entropy bytes.
+/// * `personalization_string` - Personalization string.
+///
+/// # Returns
+/// An initialized `XofReader` ready for squeezing pseudorandom bytes.
+pub fn prng_init(entropy_input: &[u8], personalization_string: &[u8]) -> impl XofReader {
+    let domain = PRNG_DOMAIN;
+
+    let mut hasher = Shake256::default();
+    sha3::digest::Update::update(&mut hasher, entropy_input);
+    sha3::digest::Update::update(&mut hasher, personalization_string);
+    sha3::digest::Update::update(&mut hasher, &[domain]);
+    sha3::digest::ExtendableOutput::finalize_xof(hasher)
+}
+
+/// A SHAKE-256 based PRNG.
+///
+/// Derived from the `SHAKE_256` construction. Squeezes `outlen` bytes
+/// from the given PRNG reader.
+///
+/// # Arguments
+/// * `reader` - An initialized PRNG reader (from `prng_init`).
+/// * `outlen` - Number of bytes to squeeze.
+///
+/// # Returns
+/// `outlen` pseudorandom bytes.
+pub fn prng_get_bytes(reader: &mut impl XofReader, outlen: usize) -> Vec<u8> {
+    let mut output = vec![0u8; outlen];
+    reader.read(&mut output);
+    output
+}
+
 /// Initializes a SHAKE256 XOF context with a given seed.
 ///
 /// # Arguments
@@ -37,6 +76,15 @@ pub fn xof_init(seed: &[u8; SEED_BYTES]) -> impl XofReader {
     sha3::digest::Update::update(&mut hasher, seed);
     sha3::digest::Update::update(&mut hasher, &[xof_domain]);
     sha3::digest::ExtendableOutput::finalize_xof(hasher)
+}
+
+/// Extracts pseudorandom bytes from a SHAKE256 XOF reader.
+///
+/// # Arguments
+/// * `reader` - A SHAKE256 XOF reader from a previously initialized context.
+/// * `output` - Buffer where the pseudorandom bytes will be written.
+pub fn xof_get_bytes(reader: &mut impl XofReader, output: &mut [u8]) {
+    reader.read(output);
 }
 
 /// Computes the hash function I (SHA3-512) with domain separation.

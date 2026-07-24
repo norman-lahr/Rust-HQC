@@ -4,6 +4,20 @@ use crate::pke::CiphertextPke;
 use rand::prelude::*;
 use rand::{rngs::StdRng, SeedableRng};
 
+/// Direct Rust equivalent of the C struct:
+/// typedef struct { uint64_t ctx[26]; } shake256incctx;
+#[repr(C)]
+pub struct Shake256IncCtx {
+    ctx: [u64; 26],
+}
+
+impl Shake256IncCtx {
+    /// Creates a zeroed context, matching C's `= {0}` initialization.
+    pub fn zeroed() -> Self {
+        Self { ctx: [0u64; 26] }
+    }
+}
+
 unsafe extern "C" {
     fn hash_i(output: *mut u8, seed: *const u8);
     fn hash_g(output: *mut u8, hash_ek_kem: *const u8, m: *const u8, salt: *const u8);
@@ -14,6 +28,8 @@ unsafe extern "C" {
         sigma: *const u8,
         c_kem: *const CiphertextKem,
     );
+    fn xof_init(xof_ctx: *mut Shake256IncCtx, seed: *const u8, seed_size: u32);
+    fn xof_get_bytes(xof_ctx: *mut Shake256IncCtx, output: *mut u8, output_size: u32);
 }
 
 /// Safe wrapper around the C hash_i function
@@ -65,6 +81,38 @@ pub fn hash_j_ref(
             hash_ek_kem.as_ptr(),
             sigma.as_ptr(),
             c_kem as *const CiphertextKem,
+        );
+    }
+    output
+}
+
+/// Safe Rust wrapper around the C `xof_init` function.
+///
+/// # Arguments
+/// * `seed` - Input seed to initialize the XOF context with.
+///
+/// # Returns
+/// An initialized `Shake256IncCtx` ready for squeezing.
+pub fn xof_init_ref(seed: &[u8]) -> Shake256IncCtx {
+    let mut ctx = Shake256IncCtx::zeroed();
+    unsafe {
+        xof_init(
+            &mut ctx as *mut Shake256IncCtx,
+            seed.as_ptr(),
+            seed.len() as u32,
+        );
+    }
+    ctx
+}
+
+/// Safe wrapper around the C `xof_get_bytes` function.
+pub fn xof_get_bytes_ref(ctx: &mut Shake256IncCtx, outlen: usize) -> Vec<u8> {
+    let mut output = vec![0u8; outlen];
+    unsafe {
+        xof_get_bytes(
+            ctx as *mut Shake256IncCtx,
+            output.as_mut_ptr(),
+            outlen as u32,
         );
     }
     output
@@ -144,4 +192,18 @@ fn test_hash_j() {
             i
         );
     }
+}
+
+#[test]
+fn test_xof_get_bytes() {
+    const TEST_SEED: [u8; SEED_BYTES] = *b"0ACE0ACE0ACE0ACE0ACE0ACE0ACE0ACE";
+    let mut reader = crate::symmetric::xof_init(&TEST_SEED);
+    let mut ctx_c = xof_init_ref(&TEST_SEED);
+
+    let mut out_rs = vec![0u8; 64];
+    crate::symmetric::xof_get_bytes(&mut reader, &mut out_rs);
+
+    let out_ref = xof_get_bytes_ref(&mut ctx_c, 64);
+
+    assert_eq!(out_rs, out_ref, "Rust and C must agree on squeezed output");
 }
