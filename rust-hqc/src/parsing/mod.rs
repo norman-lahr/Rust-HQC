@@ -47,20 +47,20 @@ pub fn hqc_ek_pke_from_string(ek_pke: &[u8]) -> ([u64; VEC_N_SIZE_64], [u64; VEC
     (h, s)
 }
 
-// /// Serializes a KEM ciphertext structure into a byte array.
-// ///
-// /// # Arguments
-// /// * `c_kem` - KEM ciphertext structure to be serialized.
-// ///
-// /// # Returns
-// /// Serialized ciphertext of `VEC_N_SIZE_BYTES + VEC_N1N2_SIZE_BYTES + SALT_BYTES` bytes.
-// pub fn hqc_c_kem_to_string(c_kem: &CiphertextKem) -> Vec<u8> {
-//     let mut ct = Vec::with_capacity(VEC_N_SIZE_BYTES + VEC_N1N2_SIZE_BYTES + SALT_BYTES);
-//     ct.extend_from_slice(&u64_words_to_bytes(&c_kem.c_pke.u)[..VEC_N_SIZE_BYTES]);
-//     ct.extend_from_slice(&u64_words_to_bytes(&c_kem.c_pke.v)[..VEC_N1N2_SIZE_BYTES]);
-//     ct.extend_from_slice(&c_kem.salt);
-//     ct
-// }
+/// Serializes a KEM ciphertext structure into a byte array.
+///
+/// # Arguments
+/// * `c_kem` - KEM ciphertext structure to be serialized.
+///
+/// # Returns
+/// Serialized ciphertext of `VEC_N_SIZE_BYTES + VEC_N1N2_SIZE_BYTES + SALT_BYTES` bytes.
+pub fn hqc_c_kem_to_string(c_kem: &CiphertextKem) -> Vec<u8> {
+    let mut ct = Vec::with_capacity(VEC_N_SIZE_BYTES + VEC_N1N2_SIZE_BYTES + SALT_BYTES);
+    ct.extend_from_slice(&u64_words_to_bytes(&c_kem.c_pke.u)[..VEC_N_SIZE_BYTES]);
+    ct.extend_from_slice(&u64_words_to_bytes(&c_kem.c_pke.v)[..VEC_N1N2_SIZE_BYTES]);
+    ct.extend_from_slice(&c_kem.salt);
+    ct
+}
 
 // /// Deserializes a KEM ciphertext byte array into its structured components.
 // ///
