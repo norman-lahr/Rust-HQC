@@ -1,12 +1,15 @@
 use rand::prelude::*;
 use rand::{rngs::StdRng, SeedableRng};
 
-use crate::parameters::{PUBLIC_KEY_BYTES, SECRET_KEY_BYTES};
+use crate::parameters::{
+    CIPHERTEXT_BYTES, PUBLIC_KEY_BYTES, SECRET_KEY_BYTES, SHARED_SECRET_BYTES,
+};
 // use crate::symmetric::prng_init;
 
 unsafe extern "C" {
     fn prng_init(entropy_input: *mut u8, personalization_string: *mut u8, enlen: u32, perlen: u32);
     fn crypto_kem_keypair(ek_kem: *mut u8, dk_kem: *mut u8) -> i32;
+    fn crypto_kem_enc(c_kem: *mut u8, k: *mut u8, ek_kem: *const u8) -> i32;
 }
 
 /// Safe wrapper around the C `prng_init` function.
@@ -38,10 +41,25 @@ pub fn crypto_kem_keypair_ref() -> (Vec<u8>, Vec<u8>) {
     (ek_kem, dk_kem)
 }
 
-// use serial_test::serial; // C side uses global PRNG state
+/// Safe wrapper around the C `crypto_kem_enc` function.
+///
+/// Note: the C implementation relies on the global `prng_init`/
+/// `prng_get_bytes` state, so `prng_init_ref` must be called (with the
+/// same entropy/personalization used to seed the Rust `prng_reader`)
+/// before invoking this wrapper for a meaningful cross-validation.
+pub fn crypto_kem_enc_ref(ek_kem: &[u8]) -> (Vec<u8>, Vec<u8>) {
+    let mut c_kem = vec![0u8; CIPHERTEXT_BYTES];
+    let mut k = vec![0u8; SHARED_SECRET_BYTES];
+    unsafe {
+        crypto_kem_enc(c_kem.as_mut_ptr(), k.as_mut_ptr(), ek_kem.as_ptr());
+    }
+    (c_kem, k)
+}
+
+use serial_test::serial; // C side uses global PRNG state
 
 #[test]
-// #[serial]
+#[serial]
 fn test_kem_keygen() {
     const TEST_ROUNDS: u64 = 100;
     let mut rng = StdRng::seed_from_u64(4u64);
@@ -58,5 +76,37 @@ fn test_kem_keygen() {
 
         assert_eq!(ek_rs, ek_ref, "ek_kem mismatch at iteration {}", i);
         assert_eq!(dk_rs, dk_ref, "dk_kem mismatch at iteration {}", i);
+    }
+}
+
+#[test]
+#[serial]
+fn test_kem_enc() {
+    const TEST_ROUNDS: u64 = 100;
+    let mut rng = StdRng::seed_from_u64(4u64);
+    for i in 0..TEST_ROUNDS {
+        let entropy: Vec<u8> = (0..32).map(|_| rng.random_range(0..=u8::MAX)).collect();
+        let pers: Vec<u8> = (0..16).map(|_| rng.random_range(0..=u8::MAX)).collect();
+
+        // Seed both PRNGs identically
+        // let prng_reader = crate::symmetric::prng_init(&entropy, &pers);
+        // prng_init_ref(&entropy, &pers);
+
+        let mut kg_reader = crate::symmetric::prng_init(&entropy, &pers);
+        let (ek_kem, _dk_kem) = crate::kem::crypto_kem_keypair(&mut kg_reader);
+
+        prng_init_ref(&entropy, &pers);
+        let (ek_kem_ref, _dk_kem_ref) = crypto_kem_keypair_ref();
+        assert_eq!(ek_kem, ek_kem_ref, "keypair mismatch at iteration {}", i);
+
+        // Re-seed for the enc step itself
+        let mut enc_reader = crate::symmetric::prng_init(&entropy, &pers);
+        prng_init_ref(&entropy, &pers);
+
+        let (c_kem_rs, k_rs) = crate::kem::crypto_kem_enc(&mut enc_reader, &ek_kem);
+        let (c_kem_ref, k_ref) = crypto_kem_enc_ref(&ek_kem);
+
+        assert_eq!(c_kem_rs, c_kem_ref, "c_kem mismatch at iteration {}", i);
+        assert_eq!(k_rs, k_ref, "K mismatch at iteration {}", i);
     }
 }

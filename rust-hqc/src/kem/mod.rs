@@ -1,6 +1,9 @@
-use crate::parameters::{PARAM_SECURITY_BYTES, PUBLIC_KEY_BYTES, SALT_BYTES, SEED_BYTES};
-use crate::pke::{hqc_pke_keygen, CiphertextPke};
-use crate::symmetric::{prng_get_bytes, xof_get_bytes, xof_init};
+use crate::parameters::{
+    PARAM_SECURITY_BYTES, PUBLIC_KEY_BYTES, SALT_BYTES, SEED_BYTES, SHARED_SECRET_BYTES,
+};
+use crate::parsing::hqc_c_kem_to_string;
+use crate::pke::{hqc_pke_encrypt, hqc_pke_keygen, CiphertextPke};
+use crate::symmetric::{hash_g, hash_h, prng_get_bytes, xof_get_bytes, xof_init};
 use sha3::digest::XofReader;
 
 /// KEM ciphertext for the HQC scheme.
@@ -60,6 +63,65 @@ pub fn crypto_kem_keypair(prng_reader: &mut impl XofReader) -> (Vec<u8>, Vec<u8>
     dk_pke.iter_mut().for_each(|b| *b = 0);
 
     (ek_kem, dk_kem)
+}
+
+/// Performs key encapsulation using the KEM scheme.
+///
+/// Uses the encapsulation key (`ek_kem`) to generate a ciphertext
+/// (`c_kem`) and a shared secret (`K`).
+///
+/// # Preconditions
+/// `prng_reader` must be an already-initialized PRNG (via `prng_init`),
+/// seeded from a secure entropy source; otherwise the generated message
+/// and salt will be insecure/predictable.
+///
+/// # Arguments
+/// * `prng_reader` - An initialized PRNG reader used to sample `m` and `salt`.
+/// * `ek_kem`       - Encapsulation key.
+///
+/// # Returns
+/// A tuple `(c_kem, K)`:
+/// * `c_kem` - Serialized KEM ciphertext.
+/// * `K`     - Shared secret of `SHARED_SECRET_BYTES` bytes.
+pub fn crypto_kem_enc(prng_reader: &mut impl XofReader, ek_kem: &[u8]) -> (Vec<u8>, Vec<u8>) {
+    // Sample message m and salt
+    let m_vec = prng_get_bytes(prng_reader, PARAM_SECURITY_BYTES);
+    let mut m: [u8; PARAM_SECURITY_BYTES] = m_vec.try_into().unwrap();
+
+    let mut c_kem_t = CiphertextKem::default();
+    let salt_vec = prng_get_bytes(prng_reader, SALT_BYTES);
+    c_kem_t.salt.copy_from_slice(&salt_vec);
+
+    // Compute shared key K and ciphertext c_kem
+    let hash_ek_kem = hash_h(ek_kem);
+
+    let m_arr: [u8; PARAM_SECURITY_BYTES] = m;
+    let mut k_theta = hash_g(&hash_ek_kem, &m_arr, &c_kem_t.salt);
+
+    let mut theta = [0u8; SEED_BYTES];
+    theta.copy_from_slice(&k_theta[SEED_BYTES..SEED_BYTES + SEED_BYTES]);
+
+    // Reinterpret m as u64 words for hqc_pke_encrypt
+    let m_words: Vec<u64> = m
+        .chunks(8)
+        .map(|chunk| {
+            let mut buf = [0u8; 8];
+            buf[..chunk.len()].copy_from_slice(chunk);
+            u64::from_le_bytes(buf)
+        })
+        .collect();
+
+    c_kem_t.c_pke = hqc_pke_encrypt(ek_kem, &m_words, &theta);
+
+    let c_kem = hqc_c_kem_to_string(&c_kem_t);
+    let k = k_theta[..SHARED_SECRET_BYTES].to_vec();
+
+    // Zeroize sensitive data
+    m.iter_mut().for_each(|b| *b = 0);
+    k_theta.iter_mut().for_each(|b| *b = 0);
+    theta.iter_mut().for_each(|b| *b = 0);
+
+    (c_kem, k)
 }
 
 #[cfg(test)]
