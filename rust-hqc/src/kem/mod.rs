@@ -1,9 +1,11 @@
 use crate::parameters::{
     PARAM_SECURITY_BYTES, PUBLIC_KEY_BYTES, SALT_BYTES, SEED_BYTES, SHARED_SECRET_BYTES,
+    VEC_N1N2_SIZE_BYTES, VEC_N_SIZE_BYTES,
 };
-use crate::parsing::hqc_c_kem_to_string;
-use crate::pke::{hqc_pke_encrypt, hqc_pke_keygen, CiphertextPke};
-use crate::symmetric::{hash_g, hash_h, prng_get_bytes, xof_get_bytes, xof_init};
+use crate::parsing::{hqc_c_kem_from_string, hqc_c_kem_to_string};
+use crate::pke::{hqc_pke_decrypt, hqc_pke_encrypt, hqc_pke_keygen, CiphertextPke};
+use crate::symmetric::{hash_g, hash_h, hash_j, prng_get_bytes, xof_get_bytes, xof_init};
+use crate::vector::vect_compare;
 use sha3::digest::XofReader;
 
 /// KEM ciphertext for the HQC scheme.
@@ -122,6 +124,114 @@ pub fn crypto_kem_enc(prng_reader: &mut impl XofReader, ek_kem: &[u8]) -> (Vec<u
     theta.iter_mut().for_each(|b| *b = 0);
 
     (c_kem, k)
+}
+
+/// Performs key decapsulation using the KEM scheme.
+///
+/// Uses the decapsulation key (`dk_kem`) to recover the shared secret
+/// (`K_prime`) from the given KEM ciphertext (`c_kem`).
+///
+/// Constant-time with respect to `dk_kem`, `c_kem`, and derived secret
+/// material: the final re-encryption check uses branchless bitmasking
+/// (`vect_compare`, `result` accumulation) rather than a data-dependent
+/// branch, matching the C implicit-rejection pattern (Fujisaki-Okamoto
+/// transform). Sensitive intermediate data is zeroized before returning.
+///
+/// # Arguments
+/// * `c_kem`  - Input KEM ciphertext.
+/// * `dk_kem` - Decapsulation key.
+///
+/// # Returns
+/// The recovered (or rejection) shared secret `K_prime` of
+/// `SHARED_SECRET_BYTES` bytes.
+pub fn crypto_kem_dec(c_kem: &[u8], dk_kem: &[u8]) -> Vec<u8> {
+    // Parse decapsulation key dk_kem
+    let ek_pke = &dk_kem[..PUBLIC_KEY_BYTES];
+    let mut dk_pke: [u8; SEED_BYTES] = dk_kem[PUBLIC_KEY_BYTES..PUBLIC_KEY_BYTES + SEED_BYTES]
+        .try_into()
+        .unwrap();
+    let mut sigma: [u8; PARAM_SECURITY_BYTES] = dk_kem
+        [PUBLIC_KEY_BYTES + SEED_BYTES..PUBLIC_KEY_BYTES + SEED_BYTES + PARAM_SECURITY_BYTES]
+        .try_into()
+        .unwrap();
+
+    // Parse ciphertext c_kem
+    let (c_pke, salt) = hqc_c_kem_from_string(c_kem);
+    let c_kem_t = CiphertextKem { c_pke, salt };
+
+    // Compute message m_prime
+    let mut m_prime = hqc_pke_decrypt(&dk_pke, &c_kem_t.c_pke);
+
+    // Compute shared key K_prime and ciphertext c_kem_prime
+    let hash_ek_kem = hash_h(ek_pke);
+
+    let m_prime_bytes: Vec<u8> = m_prime.iter().flat_map(|w| w.to_le_bytes()).collect();
+    let m_prime_arr: [u8; PARAM_SECURITY_BYTES] =
+        m_prime_bytes[..PARAM_SECURITY_BYTES].try_into().unwrap();
+
+    let mut k_theta_prime = hash_g(&hash_ek_kem, &m_prime_arr, &c_kem_t.salt);
+
+    let mut k_prime = k_theta_prime[..SHARED_SECRET_BYTES].to_vec();
+    let mut theta_prime = [0u8; SEED_BYTES];
+    theta_prime
+        .copy_from_slice(&k_theta_prime[SHARED_SECRET_BYTES..SHARED_SECRET_BYTES + SEED_BYTES]);
+
+    let c_pke_prime = hqc_pke_encrypt(ek_pke, &m_prime, &theta_prime);
+    let c_kem_prime_t = CiphertextKem {
+        c_pke: c_pke_prime,
+        salt: c_kem_t.salt,
+    };
+
+    // Compute rejection key K_bar
+    let mut k_bar = hash_j(&hash_ek_kem, &sigma, &c_kem_t).to_vec();
+
+    // Constant-time comparison — implicit rejection (branchless)
+    let u_bytes: Vec<u8> = c_kem_t
+        .c_pke
+        .u
+        .iter()
+        .flat_map(|w| w.to_le_bytes())
+        .collect();
+    let up_bytes: Vec<u8> = c_kem_prime_t
+        .c_pke
+        .u
+        .iter()
+        .flat_map(|w| w.to_le_bytes())
+        .collect();
+    let v_bytes: Vec<u8> = c_kem_t
+        .c_pke
+        .v
+        .iter()
+        .flat_map(|w| w.to_le_bytes())
+        .collect();
+    let vp_bytes: Vec<u8> = c_kem_prime_t
+        .c_pke
+        .v
+        .iter()
+        .flat_map(|w| w.to_le_bytes())
+        .collect();
+
+    let mut result: u8 = vect_compare(&u_bytes[..VEC_N_SIZE_BYTES], &up_bytes[..VEC_N_SIZE_BYTES]);
+    result |= vect_compare(
+        &v_bytes[..VEC_N1N2_SIZE_BYTES],
+        &vp_bytes[..VEC_N1N2_SIZE_BYTES],
+    );
+    result |= vect_compare(&c_kem_t.salt, &c_kem_prime_t.salt);
+    let result: u8 = result.wrapping_sub(1); // 0xFF if all matched, 0x00 if any mismatched
+
+    for i in 0..SHARED_SECRET_BYTES {
+        k_prime[i] = (k_prime[i] & result) ^ (k_bar[i] & !result);
+    }
+
+    // Zeroize sensitive data
+    dk_pke.iter_mut().for_each(|b| *b = 0);
+    sigma.iter_mut().for_each(|b| *b = 0);
+    m_prime.iter_mut().for_each(|w| *w = 0);
+    k_theta_prime.iter_mut().for_each(|b| *b = 0);
+    k_bar.iter_mut().for_each(|b| *b = 0);
+    theta_prime.iter_mut().for_each(|b| *b = 0);
+
+    k_prime
 }
 
 #[cfg(test)]

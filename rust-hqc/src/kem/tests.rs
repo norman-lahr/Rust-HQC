@@ -10,6 +10,7 @@ unsafe extern "C" {
     fn prng_init(entropy_input: *mut u8, personalization_string: *mut u8, enlen: u32, perlen: u32);
     fn crypto_kem_keypair(ek_kem: *mut u8, dk_kem: *mut u8) -> i32;
     fn crypto_kem_enc(c_kem: *mut u8, k: *mut u8, ek_kem: *const u8) -> i32;
+    fn crypto_kem_dec(k_prime: *mut u8, c_kem: *const u8, dk_kem: *const u8) -> i32;
 }
 
 /// Safe wrapper around the C `prng_init` function.
@@ -54,6 +55,15 @@ pub fn crypto_kem_enc_ref(ek_kem: &[u8]) -> (Vec<u8>, Vec<u8>) {
         crypto_kem_enc(c_kem.as_mut_ptr(), k.as_mut_ptr(), ek_kem.as_ptr());
     }
     (c_kem, k)
+}
+
+/// Safe wrapper around the C `crypto_kem_dec` function.
+pub fn crypto_kem_dec_ref(c_kem: &[u8], dk_kem: &[u8]) -> Vec<u8> {
+    let mut k_prime = vec![0u8; SHARED_SECRET_BYTES];
+    unsafe {
+        crypto_kem_dec(k_prime.as_mut_ptr(), c_kem.as_ptr(), dk_kem.as_ptr());
+    }
+    k_prime
 }
 
 use serial_test::serial; // C side uses global PRNG state
@@ -108,5 +118,71 @@ fn test_kem_enc() {
 
         assert_eq!(c_kem_rs, c_kem_ref, "c_kem mismatch at iteration {}", i);
         assert_eq!(k_rs, k_ref, "K mismatch at iteration {}", i);
+    }
+}
+
+#[test]
+#[serial]
+fn test_kem_dec() {
+    const TEST_ROUNDS: u64 = 100;
+    let mut rng = StdRng::seed_from_u64(4u64);
+    for i in 0..TEST_ROUNDS {
+        let entropy: Vec<u8> = (0..32).map(|_| rng.random_range(0..=u8::MAX)).collect();
+        let pers: Vec<u8> = (0..16).map(|_| rng.random_range(0..=u8::MAX)).collect();
+
+        // Set up matching keypair and ciphertext on both sides
+        let mut kg_reader = crate::symmetric::prng_init(&entropy, &pers);
+        prng_init_ref(&entropy, &pers);
+        let (ek_kem, dk_kem) = crate::kem::crypto_kem_keypair(&mut kg_reader);
+        let (ek_kem_ref, dk_kem_ref) = {
+            prng_init_ref(&entropy, &pers);
+            crypto_kem_keypair_ref()
+        };
+        assert_eq!(ek_kem, ek_kem_ref);
+        assert_eq!(dk_kem, dk_kem_ref);
+
+        let mut enc_reader = crate::symmetric::prng_init(&entropy, &pers);
+        prng_init_ref(&entropy, &pers);
+        let (c_kem, _k) = crate::kem::crypto_kem_enc(&mut enc_reader, &ek_kem);
+        let (c_kem_ref, _k_ref) = {
+            prng_init_ref(&entropy, &pers);
+            crypto_kem_enc_ref(&ek_kem)
+        };
+        assert_eq!(c_kem, c_kem_ref);
+
+        // The actual test: dec has no PRNG dependency
+        let k_prime_rs = crate::kem::crypto_kem_dec(&c_kem, &dk_kem);
+        let k_prime_ref = crypto_kem_dec_ref(&c_kem, &dk_kem);
+
+        assert_eq!(
+            k_prime_rs, k_prime_ref,
+            "Rust and C must agree at iteration {}",
+            i
+        );
+    }
+}
+
+#[test]
+#[serial]
+fn test_kem_roundtrip() {
+    const TEST_ROUNDS: u64 = 100;
+    let mut rng = StdRng::seed_from_u64(4u64);
+    for i in 0..TEST_ROUNDS {
+        let entropy: Vec<u8> = (0..32).map(|_| rng.random_range(0..=u8::MAX)).collect();
+        let pers: Vec<u8> = (0..16).map(|_| rng.random_range(0..=u8::MAX)).collect();
+
+        let mut kg_reader = crate::symmetric::prng_init(&entropy, &pers);
+        let (ek_kem, dk_kem) = crate::kem::crypto_kem_keypair(&mut kg_reader);
+
+        let mut enc_reader = crate::symmetric::prng_init(&entropy, &pers);
+        let (c_kem, k) = crate::kem::crypto_kem_enc(&mut enc_reader, &ek_kem);
+
+        let k_prime = crate::kem::crypto_kem_dec(&c_kem, &dk_kem);
+
+        assert_eq!(
+            k, k_prime,
+            "decapsulated key must match encapsulated key at iteration {}",
+            i
+        );
     }
 }
