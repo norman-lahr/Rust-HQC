@@ -62,40 +62,40 @@ pub fn hqc_c_kem_to_string(c_kem: &CiphertextKem) -> Vec<u8> {
     ct
 }
 
-// /// Deserializes a KEM ciphertext byte array into its structured components.
-// ///
-// /// # Arguments
-// /// * `ct` - Serialized KEM ciphertext.
-// ///
-// /// # Returns
-// /// A tuple `(c_pke, salt)`:
-// /// * `c_pke` - Deserialized PKE ciphertext.
-// /// * `salt`  - Extracted salt of `SALT_BYTES` bytes.
-// pub fn hqc_c_kem_from_string(ct: &[u8]) -> (CiphertextPke, [u8; SALT_BYTES]) {
-//     let u_bytes = &ct[..VEC_N_SIZE_BYTES];
-//     let v_bytes = &ct[VEC_N_SIZE_BYTES..VEC_N_SIZE_BYTES + VEC_N1N2_SIZE_BYTES];
-//     let salt_bytes = &ct[VEC_N_SIZE_BYTES + VEC_N1N2_SIZE_BYTES
-//         ..VEC_N_SIZE_BYTES + VEC_N1N2_SIZE_BYTES + SALT_BYTES];
+/// Deserializes a KEM ciphertext byte array into its structured components.
+///
+/// # Arguments
+/// * `ct` - Serialized KEM ciphertext.
+///
+/// # Returns
+/// A tuple `(c_pke, salt)`:
+/// * `c_pke` - Deserialized PKE ciphertext.
+/// * `salt`  - Extracted salt of `SALT_BYTES` bytes.
+pub fn hqc_c_kem_from_string(ct: &[u8]) -> (CiphertextPke, [u8; SALT_BYTES]) {
+    let u_bytes = &ct[..VEC_N_SIZE_BYTES];
+    let v_bytes = &ct[VEC_N_SIZE_BYTES..VEC_N_SIZE_BYTES + VEC_N1N2_SIZE_BYTES];
+    let salt_bytes = &ct[VEC_N_SIZE_BYTES + VEC_N1N2_SIZE_BYTES
+        ..VEC_N_SIZE_BYTES + VEC_N1N2_SIZE_BYTES + SALT_BYTES];
 
-//     let mut u = [0u64; VEC_N_SIZE_64];
-//     for (i, chunk) in u_bytes.chunks(8).enumerate() {
-//         let mut buf = [0u8; 8];
-//         buf[..chunk.len()].copy_from_slice(chunk);
-//         u[i] = u64::from_le_bytes(buf);
-//     }
+    let mut u = [0u64; VEC_N_SIZE_64];
+    for (i, chunk) in u_bytes.chunks(8).enumerate() {
+        let mut buf = [0u8; 8];
+        buf[..chunk.len()].copy_from_slice(chunk);
+        u[i] = u64::from_le_bytes(buf);
+    }
 
-//     let mut v = [0u64; VEC_N1N2_SIZE_64];
-//     for (i, chunk) in v_bytes.chunks(8).enumerate() {
-//         let mut buf = [0u8; 8];
-//         buf[..chunk.len()].copy_from_slice(chunk);
-//         v[i] = u64::from_le_bytes(buf);
-//     }
+    let mut v = [0u64; VEC_N_SIZE_64];
+    for (i, chunk) in v_bytes.chunks(8).enumerate() {
+        let mut buf = [0u8; 8];
+        buf[..chunk.len()].copy_from_slice(chunk);
+        v[i] = u64::from_le_bytes(buf);
+    }
 
-//     let mut salt = [0u8; SALT_BYTES];
-//     salt.copy_from_slice(salt_bytes);
+    let mut salt = [0u8; SALT_BYTES];
+    salt.copy_from_slice(salt_bytes);
 
-//     (CiphertextPke { u, v }, salt)
-// }
+    (CiphertextPke { u, v }, salt)
+}
 
 #[cfg(test)]
 mod tests;
