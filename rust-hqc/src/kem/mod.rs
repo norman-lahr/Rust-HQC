@@ -236,3 +236,4 @@ pub fn crypto_kem_dec(c_kem: &[u8], dk_kem: &[u8]) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests;
+mod tests_kat;
