@@ -348,5 +348,5 @@ pub fn fft_retrieve_error_poly(error: &mut [u8], w: &[u16]) {
     }
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(all(test, feature = "ref-ffi"))]
+mod tests_ffi;

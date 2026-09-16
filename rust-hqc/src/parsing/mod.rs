@@ -97,5 +97,5 @@ pub fn hqc_c_kem_from_string(ct: &[u8]) -> (CiphertextPke, [u8; SALT_BYTES]) {
     (CiphertextPke { u, v }, salt)
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(all(test, feature = "ref-ffi"))]
+mod tests_ffi;

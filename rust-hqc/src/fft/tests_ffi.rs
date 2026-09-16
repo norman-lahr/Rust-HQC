@@ -3,14 +3,7 @@ use crate::parameters::{PARAM_DELTA, PARAM_FFT, PARAM_M, VEC_N_SIZE_BYTES};
 use rand::prelude::*;
 use rand::{rngs::StdRng, SeedableRng};
 
-unsafe extern "C" {
-    // fn compute_fft_betas(betas: *mut u16);
-    // fn compute_subset_sums(subset_sums: *mut u16, set: *const u16, set_size: u16);
-    // fn radix(f0: *mut u16, f1: *mut u16, f: *const u16, m_f: u32);
-    // fn radix_big(f0: *mut u16, f1: *mut u16, f: *const u16, m_f: u32);
-    fn fft(w: *mut u16, f: *const u16, f_coeffs: usize);
-    fn fft_retrieve_error_poly(error: *mut u8, w: *const u16);
-}
+use crate::ffi::hqc1::{compute_fft_betas, compute_subset_sums, fft, fft_retrieve_error_poly, radix, radix_big};
 
 // /// Safe wrapper around the C `compute_fft_betas` function.
 // pub fn compute_fft_betas_ref() -> [u16; PARAM_M - 1] {

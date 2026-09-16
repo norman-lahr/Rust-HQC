@@ -6,12 +6,7 @@ use crate::pke::CiphertextPke;
 use rand::prelude::*;
 use rand::{rngs::StdRng, SeedableRng};
 
-unsafe extern "C" {
-    fn hqc_dk_pke_from_string(y: *mut u64, dk_pke: *const u8);
-    fn hqc_ek_pke_from_string(h: *mut u64, s: *mut u64, ek_pke: *const u8);
-    fn hqc_c_kem_to_string(ct: *mut u8, c_kem: *const CiphertextKem);
-    // fn hqc_c_kem_from_string(c_pke: *mut CiphertextPke, salt: *mut u8, ct: *const u8);
-}
+use crate::ffi::hqc1::{hqc_c_kem_from_string, hqc_c_kem_to_string, hqc_dk_pke_from_string, hqc_ek_pke_from_string};
 
 /// Safe wrapper around the C `hqc_dk_pke_from_string` function.
 pub fn hqc_dk_pke_from_string_ref(dk_pke: &[u8; SEED_BYTES]) -> [u64; VEC_N_SIZE_64] {
@@ -36,7 +31,7 @@ pub fn hqc_ek_pke_from_string_ref(ek_pke: &[u8]) -> ([u64; VEC_N_SIZE_64], [u64;
 pub fn hqc_c_kem_to_string_ref(c_kem: &CiphertextKem) -> Vec<u8> {
     let mut ct = vec![0u8; VEC_N_SIZE_BYTES + VEC_N1N2_SIZE_BYTES + SALT_BYTES];
     unsafe {
-        hqc_c_kem_to_string(ct.as_mut_ptr(), c_kem as *const CiphertextKem);
+        hqc_c_kem_to_string(ct.as_mut_ptr(), c_kem as *const CiphertextKem as *const u64);
     }
     ct
 }
@@ -47,7 +42,7 @@ pub fn hqc_c_kem_to_string_ref(c_kem: &CiphertextKem) -> Vec<u8> {
 //     let mut salt = [0u8; SALT_BYTES];
 //     unsafe {
 //         hqc_c_kem_from_string(
-//             &mut c_pke as *mut CiphertextPke,
+//             &mut c_pke as *mut CiphertextPke as *mut u64,
 //             salt.as_mut_ptr(),
 //             ct.as_ptr(),
 //         );

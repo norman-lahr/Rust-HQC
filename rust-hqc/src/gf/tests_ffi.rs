@@ -3,14 +3,7 @@ use rand::{rngs::StdRng, SeedableRng};
 
 use crate::parameters::PARAM_M;
 
-unsafe extern "C" {
-    fn gf_generate(exp: *mut u16, log: *mut u16, m: i16);
-    fn gf_reduce(x: u16) -> u16;
-    fn gf_carryless_mul(c: *mut u8, a: u8, b: u8);
-    fn gf_mul(a: u16, b: u16) -> u16;
-    fn gf_square(a: u16) -> u16;
-    fn gf_inverse(a: u16) -> u16;
-}
+use crate::ffi::hqc1::{gf_carryless_mul, gf_generate, gf_inverse, gf_mul, gf_reduce, gf_square};
 
 /// Safe wrapper around the C `gf_generate` function.
 pub fn gf_generate_ref(m: u16) -> (Vec<u16>, Vec<u16>) {

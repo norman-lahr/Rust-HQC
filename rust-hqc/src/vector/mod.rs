@@ -317,5 +317,5 @@ pub fn vect_truncate(v: &mut [u64; VEC_N_SIZE_64]) {
     }
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(all(test, feature = "ref-ffi"))]
+mod tests_ffi;

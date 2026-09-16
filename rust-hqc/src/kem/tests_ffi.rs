@@ -6,12 +6,7 @@ use crate::parameters::{
 };
 // use crate::symmetric::prng_init;
 
-unsafe extern "C" {
-    fn prng_init(entropy_input: *mut u8, personalization_string: *mut u8, enlen: u32, perlen: u32);
-    fn crypto_kem_keypair(ek_kem: *mut u8, dk_kem: *mut u8) -> i32;
-    fn crypto_kem_enc(c_kem: *mut u8, k: *mut u8, ek_kem: *const u8) -> i32;
-    fn crypto_kem_dec(k_prime: *mut u8, c_kem: *const u8, dk_kem: *const u8) -> i32;
-}
+use crate::ffi::hqc1::{crypto_kem_dec, crypto_kem_enc, crypto_kem_keypair, prng_init};
 
 /// Safe wrapper around the C `prng_init` function.
 pub fn prng_init_ref(entropy_input: &[u8], personalization_string: &[u8]) {

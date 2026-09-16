@@ -202,5 +202,5 @@ pub fn hqc_pke_decrypt(dk_pke: &[u8; SEED_BYTES], c_pke: &CiphertextPke) -> Vec<
     m
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(all(test, feature = "ref-ffi"))]
+mod tests_ffi;

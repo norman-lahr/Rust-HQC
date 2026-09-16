@@ -3,16 +3,7 @@ use crate::pke::CiphertextPke;
 use rand::prelude::*;
 use rand::{rngs::StdRng, SeedableRng};
 
-unsafe extern "C" {
-    fn hqc_pke_keygen(ek_pke: *mut u8, dk_pke: *mut u8, seed: *mut u8);
-    fn hqc_pke_encrypt(
-        c_pke: *mut CiphertextPke,
-        ek_pke: *const u8,
-        m: *const u64,
-        theta: *const u8,
-    );
-    fn hqc_pke_decrypt(m: *mut u64, dk_pke: *const u8, c_pke: *const CiphertextPke);
-}
+use crate::ffi::hqc1::{hqc_pke_decrypt, hqc_pke_encrypt, hqc_pke_keygen};
 
 /// Safe wrapper around the C `hqc_pke_keygen` function.
 pub fn hqc_pke_keygen_ref(seed: &[u8; SEED_BYTES]) -> (Vec<u8>, Vec<u8>) {
@@ -34,7 +25,7 @@ pub fn hqc_pke_encrypt_ref(ek_pke: &[u8], m: &[u64], theta: &[u8; SEED_BYTES]) -
     let mut c_pke = CiphertextPke::zeroed();
     unsafe {
         hqc_pke_encrypt(
-            &mut c_pke as *mut CiphertextPke,
+            &mut c_pke as *mut CiphertextPke as *mut u64,
             ek_pke.as_ptr(),
             m.as_ptr(),
             theta.as_ptr(),
@@ -50,7 +41,7 @@ pub fn hqc_pke_decrypt_ref(dk_pke: &[u8; SEED_BYTES], c_pke: &CiphertextPke) -> 
         hqc_pke_decrypt(
             m.as_mut_ptr(),
             dk_pke.as_ptr(),
-            c_pke as *const CiphertextPke,
+            c_pke as *const CiphertextPke as *const u64,
         );
     }
     m

@@ -1,6 +1,6 @@
 use crate::parameters::{VEC_N1N2_SIZE_64, VEC_N1_SIZE_64};
 
-mod reed_muller;
+pub mod reed_muller;
 mod reed_solomon;
 
 /// Encodes the message `m` to a codeword `em` using the concatenated code.
@@ -48,3 +48,6 @@ pub fn code_decode(em: &[u64]) -> Vec<u64> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(all(test, feature = "ref-ffi"))]
+mod tests_ffi;

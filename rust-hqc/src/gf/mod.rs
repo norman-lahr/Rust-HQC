@@ -252,5 +252,5 @@ pub fn gf_inverse(a: u16) -> u16 {
     inv
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(all(test, feature = "ref-ffi"))]
+mod tests_ffi;

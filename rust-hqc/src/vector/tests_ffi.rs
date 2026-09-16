@@ -25,34 +25,10 @@ fn test_barrett_reduce_sequential() {
 // Test Fixed-weight Vector Generation
 // -------------------------------------------------------
 
-/// typedef struct { uint64_t ctx[26]; } shake256incctx;
-#[repr(C)]
-pub struct Shake256IncCtx {
-    ctx: [u64; 26],
-}
 
-impl Shake256IncCtx {
-    /// Creates a zeroed context, matching C's `= {0}` initialization.
-    pub fn zeroed() -> Self {
-        Self { ctx: [0u64; 26] }
-    }
-}
-
-unsafe extern "C" {
-    fn xof_init(xof_ctx: *mut Shake256IncCtx, seed: *const u8, seed_size: u32);
-
-    fn shake256_inc_squeeze(output: *mut u8, output_size: u32, xof_ctx: *mut Shake256IncCtx);
-
-    fn vect_generate_random_support1(ctx: *mut Shake256IncCtx, support: *mut u32, weight: u16);
-    fn vect_generate_random_support2(ctx: *mut Shake256IncCtx, support: *mut u32, weight: u16);
-    fn vect_write_support_to_vector(v: *mut u64, support: *const u32, weight: u16);
-    fn vect_sample_fixed_weight1(ctx: *mut Shake256IncCtx, v: *mut u64, weight: u16);
-    fn vect_sample_fixed_weight2(ctx: *mut Shake256IncCtx, v: *mut u64, weight: u16);
-    fn vect_set_random(ctx: *mut Shake256IncCtx, v: *mut u64);
-    fn vect_add(o: *mut u64, v1: *const u64, v2: *const u64, size: u32);
-    fn vect_compare(v1: *const u8, v2: *const u8, size: u32) -> u8;
-    fn vect_truncate(v: *mut u64);
-}
+use crate::ffi::Shake256IncCtx;
+use crate::ffi::hqc1::{shake256_inc_squeeze, vect_add, vect_compare, vect_generate_random_support1, vect_generate_random_support2, vect_sample_fixed_weight1, vect_sample_fixed_weight2, vect_truncate, vect_write_support_to_vector, xof_init};
+use crate::ffi::hqc1::vect_set_random as ffi_vect_set_random;
 
 /// Safe Rust wrapper around the C `xof_init` function.
 ///
@@ -219,7 +195,7 @@ pub fn vect_add_ref(o: &mut [u64], v1: &[u64], v2: &[u64], size: usize) {
 pub fn vect_set_random_ref(ctx: &mut Shake256IncCtx) -> [u64; VEC_N_SIZE_64] {
     let mut v = [0u64; VEC_N_SIZE_64];
     unsafe {
-        vect_set_random(ctx as *mut Shake256IncCtx, v.as_mut_ptr());
+        ffi_vect_set_random(ctx as *mut Shake256IncCtx, v.as_mut_ptr());
     }
     v
 }
@@ -356,7 +332,7 @@ fn test_vect_sample_fixed_weight1() {
 
     for i in 0..100 {
         let v = crate::vector::vect_sample_fixed_weight1(&mut ctx, PARAM_OMEGA);
-        let v_ref = crate::vector::tests::vect_sample_fixed_weight1_ref(&mut ctx_ref, PARAM_OMEGA);
+        let v_ref = crate::vector::tests_ffi::vect_sample_fixed_weight1_ref(&mut ctx_ref, PARAM_OMEGA);
 
         assert_eq!(
             v, v_ref,
@@ -375,7 +351,7 @@ fn test_vect_sample_fixed_weight2() {
 
     for i in 0..100 {
         let v = crate::vector::vect_sample_fixed_weight2(&mut ctx, PARAM_OMEGA);
-        let v_ref = crate::vector::tests::vect_sample_fixed_weight2_ref(&mut ctx_ref, PARAM_OMEGA);
+        let v_ref = crate::vector::tests_ffi::vect_sample_fixed_weight2_ref(&mut ctx_ref, PARAM_OMEGA);
 
         assert_eq!(
             v, v_ref,
@@ -394,7 +370,7 @@ fn test_vect_set_random() {
 
     for i in 0..100 {
         let v = crate::vector::vect_set_random(&mut ctx);
-        let v_ref = crate::vector::tests::vect_set_random_ref(&mut ctx_ref);
+        let v_ref = crate::vector::tests_ffi::vect_set_random_ref(&mut ctx_ref);
         assert_eq!(
             v, v_ref,
             "C and Rust must produce identical bit-vectors at iteration {}",

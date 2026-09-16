@@ -1,4 +1,4 @@
-use crate::kem::CiphertextKem;
+pub use crate::kem::CiphertextKem;
 use crate::parameters::{
     PARAM_SECURITY_BYTES, SALT_BYTES, SEED_BYTES, VEC_N1N2_SIZE_BYTES, VEC_N_SIZE_BYTES,
 };
@@ -171,5 +171,5 @@ pub fn hash_j(
     hasher.finalize().into()
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(all(test, feature = "ref-ffi"))]
+mod tests_ffi;

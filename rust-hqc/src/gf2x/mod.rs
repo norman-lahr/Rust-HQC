@@ -173,5 +173,5 @@ pub fn vect_mul(a1: &[u64; VEC_N_SIZE_64], a2: &[u64; VEC_N_SIZE_64]) -> [u64; V
     o
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(all(test, feature = "ref-ffi"))]
+mod tests_ffi;

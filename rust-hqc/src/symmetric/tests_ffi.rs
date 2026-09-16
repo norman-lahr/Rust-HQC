@@ -5,32 +5,9 @@ use rand::prelude::*;
 use rand::{rngs::StdRng, SeedableRng};
 
 /// Direct Rust equivalent of the C struct:
-/// typedef struct { uint64_t ctx[26]; } shake256incctx;
-#[repr(C)]
-pub struct Shake256IncCtx {
-    ctx: [u64; 26],
-}
 
-impl Shake256IncCtx {
-    /// Creates a zeroed context, matching C's `= {0}` initialization.
-    pub fn zeroed() -> Self {
-        Self { ctx: [0u64; 26] }
-    }
-}
-
-unsafe extern "C" {
-    fn hash_i(output: *mut u8, seed: *const u8);
-    fn hash_g(output: *mut u8, hash_ek_kem: *const u8, m: *const u8, salt: *const u8);
-    fn hash_h(output: *mut u8, ek_kem: *const u8);
-    fn hash_j(
-        output: *mut u8,
-        hash_ek_kem: *const u8,
-        sigma: *const u8,
-        c_kem: *const CiphertextKem,
-    );
-    fn xof_init(xof_ctx: *mut Shake256IncCtx, seed: *const u8, seed_size: u32);
-    fn xof_get_bytes(xof_ctx: *mut Shake256IncCtx, output: *mut u8, output_size: u32);
-}
+use crate::ffi::Shake256IncCtx;
+use crate::ffi::hqc1::{hash_g, hash_h, hash_i, hash_j, xof_get_bytes, xof_init};
 
 /// Safe wrapper around the C hash_i function
 fn hash_i_ref(seed: &[u8]) -> [u8; 64] {
@@ -80,7 +57,7 @@ pub fn hash_j_ref(
             output.as_mut_ptr(),
             hash_ek_kem.as_ptr(),
             sigma.as_ptr(),
-            c_kem as *const CiphertextKem,
+            c_kem as *const CiphertextKem as *const u64,
         );
     }
     output

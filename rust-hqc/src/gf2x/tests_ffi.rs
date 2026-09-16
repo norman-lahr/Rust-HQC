@@ -1,10 +1,7 @@
 use crate::parameters::*;
 use crate::vector::vect_set_random;
 
-unsafe extern "C" {
-    // fn schoolbook_mul(r: *mut u64, a: *const u64, b: *const u64, n: usize);
-    fn vect_mul(o: *mut u64, a1: *const u64, a2: *const u64);
-}
+use crate::ffi::hqc1::{vect_mul, vect_set_random as ffi_vect_set_random, xof_init};
 
 /// Safe wrapper around the C `vect_mul` function.
 ///
