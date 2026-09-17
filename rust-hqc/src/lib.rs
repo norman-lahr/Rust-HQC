@@ -1,4 +1,6 @@
 pub mod api;
+pub mod capi;
+pub mod error;
 pub mod code;
 pub mod fft;
 #[cfg(test)]
@@ -8,11 +10,11 @@ mod ffi;
 pub mod gf;
 pub mod gf2x;
 pub mod kem;
+pub mod nist;
 pub mod parameters;
 pub mod parsing;
 pub mod pke;
 pub mod symmetric;
 #[cfg(test)]
 mod testvectors;
-mod types;
 pub mod vector;

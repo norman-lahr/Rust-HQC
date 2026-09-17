@@ -29,5 +29,6 @@ hqc-5 = []
 ref-ffi = []
 
 [lib]
+crate-type = ["lib", "staticlib"]
 name = "rust_hqc"
 path = "src/lib.rs"
