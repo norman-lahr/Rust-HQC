@@ -139,7 +139,7 @@ fn test_fft() {
             .map(|_| rng.random_range(0..=u16::MAX))
             .collect();
 
-        let w = crate::fft::fft(&f, f_coeffs);
+        let w = crate::fft::fft(&f, f_coeffs, PARAM_FFT);
         let w_ref = fft_ref(&f, f_coeffs);
 
         assert_eq!(w, w_ref, "Rust and C must agree at iteration {}", i);

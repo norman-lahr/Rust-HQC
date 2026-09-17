@@ -1,6 +1,6 @@
 pub use crate::kem::CiphertextKem;
 use crate::parameters::{
-    PARAM_SECURITY_BYTES, SALT_BYTES, SEED_BYTES, VEC_N1N2_SIZE_BYTES, VEC_N_SIZE_BYTES,
+    HqcParameters, SALT_BYTES, SEED_BYTES,
 };
 use crate::pke::u64_words_to_bytes;
 use sha3::digest::XofReader;
@@ -106,14 +106,14 @@ pub fn hash_i(seed: &[u8; SEED_BYTES]) -> [u8; 64] {
 ///
 /// # Arguments
 /// * `hash_ek_kem` - Hash of the KEM encapsulation key, `SEED_BYTES` bytes.
-/// * `m`           - Message bytes, `PARAM_SECURITY_BYTES` bytes.
+/// * `m`           - Message bytes, `p.security_bytes` long.
 /// * `salt`        - Salt value, `SALT_BYTES` bytes.
 ///
 /// # Returns
 /// 64-byte SHA3-512 hash output.
 pub fn hash_g(
     hash_ek_kem: &[u8; SEED_BYTES],
-    m: &[u8; PARAM_SECURITY_BYTES],
+    m: &[u8],
     salt: &[u8; SALT_BYTES],
 ) -> [u8; 64] {
     let g_domain = G_FCT_DOMAIN;
@@ -129,7 +129,7 @@ pub fn hash_g(
 /// Computes the hash function H (SHA3-256) with domain separation.
 ///
 /// # Arguments
-/// * `ek_kem` - Encapsulation key of the KEM, `PUBLIC_KEY_BYTES` bytes.
+/// * `ek_kem` - Encapsulation key of the KEM, `p.ek_bytes` long.
 ///
 /// # Returns
 /// 32-byte SHA3-256 hash output.
@@ -146,14 +146,15 @@ pub fn hash_h(ek_kem: &[u8]) -> [u8; 32] {
 ///
 /// # Arguments
 /// * `hash_ek_kem` - Hash of the KEM encapsulation key, `SEED_BYTES` bytes.
-/// * `sigma`       - The string sigma, `PARAM_SECURITY_BYTES` bytes.
+/// * `sigma`       - The string sigma, `p.security_bytes` long.
 /// * `c_kem`       - Ciphertext struct (includes `c_pke.u`, `c_pke.v`, and `salt`).
 ///
 /// # Returns
 /// 32-byte SHA3-256 hash output.
 pub fn hash_j(
+    p: &HqcParameters,
     hash_ek_kem: &[u8; SEED_BYTES],
-    sigma: &[u8; PARAM_SECURITY_BYTES],
+    sigma: &[u8],
     c_kem: &CiphertextKem,
 ) -> [u8; 32] {
     let k_domain = J_FCT_DOMAIN;
@@ -164,8 +165,8 @@ pub fn hash_j(
     let mut hasher = Sha3_256::new();
     hasher.update(hash_ek_kem);
     hasher.update(sigma);
-    hasher.update(&u_bytes[..VEC_N_SIZE_BYTES]);
-    hasher.update(&v_bytes[..VEC_N1N2_SIZE_BYTES]);
+    hasher.update(&u_bytes[..p.vec_n_size_bytes]);
+    hasher.update(&v_bytes[..p.vec_n1n2_size_bytes]);
     hasher.update(&c_kem.salt);
     hasher.update([k_domain]);
     hasher.finalize().into()

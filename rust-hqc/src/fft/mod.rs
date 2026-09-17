@@ -7,7 +7,7 @@
 //! https://binary.cr.yp.to/mcbits-20130616.pdf
 
 use crate::gf::*;
-use crate::parameters::{PARAM_FFT, PARAM_GF_MUL_ORDER, PARAM_M};
+use crate::parameters::{PARAM_GF_MUL_ORDER, PARAM_M};
 
 /// Computes the basis of betas (omitting 1) used in the additive FFT and its transpose.
 ///
@@ -252,15 +252,18 @@ pub fn fft_rec(w: &mut [u16], f: &mut [u16], f_coeffs: usize, m: u8, m_f: u32, b
 ///
 /// Constant-time with respect to the coefficients of `f`: all structure
 /// (loop bounds, recursion depth) depends only on public compile-time
-/// parameters (`PARAM_M`, `PARAM_FFT`), never on secret coefficient values.
+/// parameters (`PARAM_M`, `fft_exp`), never on secret coefficient values.
 ///
 /// # Arguments
-/// * `f`        - Input array of `2^PARAM_FFT` elements.
+/// * `f`        - Input array of `2^fft_exp` elements.
 /// * `f_coeffs` - Number of coefficients of `f` (i.e. deg(f)+1).
+/// * `fft_exp`  - `HqcParameters::fft_exp`: 4 for HQC-1, 5 for HQC-3 and
+///                HQC-5. The only parameter-dependent quantity in this module;
+///                everything else derives from the invariant `PARAM_M`.
 ///
 /// # Returns
 /// Output array `w` of `2^PARAM_M` field evaluations.
-pub fn fft(f: &[u16], f_coeffs: usize) -> Vec<u16> {
+pub fn fft(f: &[u16], f_coeffs: usize, fft_exp: usize) -> Vec<u16> {
     let betas = compute_fft_betas(); // [u16; PARAM_M - 1]
 
     // Compute betas subset sums
@@ -268,11 +271,11 @@ pub fn fft(f: &[u16], f_coeffs: usize) -> Vec<u16> {
     compute_subset_sums(&betas, &mut betas_sums);
 
     // Step 3: radix split
-    let half = 1usize << (PARAM_FFT - 1);
+    let half = 1usize << (fft_exp - 1);
     let mut f0 = vec![0u16; half];
     let mut f1 = vec![0u16; half];
     let f_copy = f.to_vec(); // radix takes f by reference, no mutation needed here
-    radix(&mut f0, &mut f1, &f_copy, PARAM_FFT as u32);
+    radix(&mut f0, &mut f1, &f_copy, fft_exp as u32);
 
     // Step 4: compute deltas
     let mut deltas = vec![0u16; PARAM_M - 1];
@@ -288,7 +291,7 @@ pub fn fft(f: &[u16], f_coeffs: usize) -> Vec<u16> {
         &mut f0,
         (f_coeffs + 1) / 2,
         (PARAM_M - 1) as u8,
-        (PARAM_FFT - 1) as u32,
+        (fft_exp - 1) as u32,
         &deltas,
     );
     fft_rec(
@@ -296,7 +299,7 @@ pub fn fft(f: &[u16], f_coeffs: usize) -> Vec<u16> {
         &mut f1,
         f_coeffs / 2,
         (PARAM_M - 1) as u8,
-        (PARAM_FFT - 1) as u32,
+        (fft_exp - 1) as u32,
         &deltas,
     );
 

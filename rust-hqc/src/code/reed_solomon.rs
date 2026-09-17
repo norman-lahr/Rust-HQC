@@ -825,7 +825,7 @@ pub fn compute_elp(syndromes: &[u16]) -> ([u16; PARAM_DELTA + 1], u16) {
 /// * `sigma` - Array of `2^PARAM_FFT` elements storing the error locator polynomial.
 /// * `error` - Output array of `2^PARAM_M` elements receiving the error polynomial.
 pub fn compute_roots(error: &mut [u8], sigma: &[u16]) {
-    let w = fft(sigma, PARAM_DELTA + 1);
+    let w = fft(sigma, PARAM_DELTA + 1, PARAM_FFT);
     fft_retrieve_error_poly(error, &w);
 }
 

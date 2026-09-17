@@ -151,8 +151,11 @@ pub fn hadamard(src: &mut RmExpandedCdw, dst: &mut RmExpandedCdw) {
 ///
 /// # Arguments
 /// * `dest` - Output expanded codeword.
-/// * `src`  - Slice of `MULTIPLICITY` input codewords.
-pub fn expand_and_sum(dest: &mut RmExpandedCdw, src: &[RmCodeword; MULTIPLICITY]) {
+/// * `src`  - The repeated codewords for one symbol. Its length is the
+///            parameter set's multiplicity: 3 for HQC-1, 5 for HQC-3 and
+///            HQC-5. Taken as a slice rather than a fixed-size array so the
+///            multiplicity can be chosen at run time.
+pub fn expand_and_sum(dest: &mut RmExpandedCdw, src: &[RmCodeword]) {
     // Initialize dest with the first copy
     for part in 0..4usize {
         for bit in 0..32usize {
@@ -161,7 +164,7 @@ pub fn expand_and_sum(dest: &mut RmExpandedCdw, src: &[RmCodeword; MULTIPLICITY]
     }
 
     // Accumulate the remaining copies
-    for copy in 1..MULTIPLICITY {
+    for copy in 1..src.len() {
         for part in 0..4usize {
             for bit in 0..32usize {
                 dest[part * 32 + bit] =

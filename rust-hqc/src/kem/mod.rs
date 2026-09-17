@@ -1,4 +1,4 @@
-use crate::parameters::{
+use crate::parameters::{HQC_1, 
     PARAM_SECURITY_BYTES, PUBLIC_KEY_BYTES, SALT_BYTES, SEED_BYTES, SHARED_SECRET_BYTES,
     VEC_N1N2_SIZE_BYTES, VEC_N_SIZE_BYTES,
 };
@@ -183,7 +183,7 @@ pub fn crypto_kem_dec(c_kem: &[u8], dk_kem: &[u8]) -> Vec<u8> {
     };
 
     // Compute rejection key K_bar
-    let mut k_bar = hash_j(&hash_ek_kem, &sigma, &c_kem_t).to_vec();
+    let mut k_bar = hash_j(&HQC_1, &hash_ek_kem, &sigma, &c_kem_t).to_vec();
 
     // Constant-time comparison — implicit rejection (branchless)
     let u_bytes: Vec<u8> = c_kem_t

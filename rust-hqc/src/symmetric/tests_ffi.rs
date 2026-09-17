@@ -1,3 +1,4 @@
+use crate::parameters::HQC_1;
 use crate::kem::CiphertextKem;
 use crate::parameters::{PARAM_SECURITY_BYTES, PUBLIC_KEY_BYTES, SALT_BYTES, SEED_BYTES};
 use crate::pke::CiphertextPke;
@@ -160,7 +161,7 @@ fn test_hash_j() {
             salt: std::array::from_fn(|_| rng.random_range(0..=u8::MAX)),
         };
 
-        let output = crate::symmetric::hash_j(&hash_ek_kem, &sigma, &c_kem);
+        let output = crate::symmetric::hash_j(&HQC_1, &hash_ek_kem, &sigma, &c_kem);
         let output_ref = hash_j_ref(&hash_ek_kem, &sigma, &c_kem);
 
         assert_eq!(
