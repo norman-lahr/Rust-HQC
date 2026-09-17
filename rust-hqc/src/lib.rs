@@ -3,8 +3,6 @@ pub mod capi;
 pub mod error;
 pub mod code;
 pub mod fft;
-#[cfg(test)]
-mod parameters_compat_check;
 #[cfg(all(test, feature = "ref-ffi"))]
 mod ffi;
 pub mod gf;
