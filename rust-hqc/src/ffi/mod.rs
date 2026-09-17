@@ -30,7 +30,7 @@
 //!
 //! # Variant-sized C structs
 //!
-//! `ciphertext_pke_t` is `uint64_t u[VEC_N_SIZE_64]` followed by an identical
+//! `ciphertext_pke_t` is `uint64_t u[p.vec_n_size_64]` followed by an identical
 //! `v`, so its size depends on the parameter set. It is declared here as
 //! `*mut u64` rather than as three per-variant `#[repr(C)]` structs: two
 //! contiguous `u64` arrays have alignment 8 and no padding, so the layout is

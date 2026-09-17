@@ -5,16 +5,17 @@ use super::*;
 // -------------------------------------------------------
 
 /// Reference implementation using plain modulo for comparison.
-fn barrett_reduce_ref(x: u32) -> u32 {
-    x % (PARAM_N as u32)
+fn barrett_reduce_ref(p: &crate::parameters::HqcParameters, x: u32) -> u32 {
+    x % (p.n as u32)
 }
 
 #[test]
 fn test_barrett_reduce_sequential() {
-    for x in 0..=(3 * PARAM_N as u32) {
+    let p = &HQC_1;
+    for x in 0..=(3 * p.n as u32) {
         assert_eq!(
-            barrett_reduce(x),
-            barrett_reduce_ref(x),
+            barrett_reduce(p, x),
+            barrett_reduce_ref(p, x),
             "mismatch at x = {}",
             x
         );
@@ -71,8 +72,8 @@ pub fn xof_squeeze(ctx: &mut Shake256IncCtx, output: &mut [u8]) {
 /// * `weight` - Desired Hamming weight.
 ///
 /// # Returns
-/// A `Vec<u32>` of `weight` unique indices in `[0, PARAM_N)`.
-pub fn vect_generate_random_support1_ref(ctx: &mut Shake256IncCtx, weight: usize) -> Vec<u32> {
+/// A `Vec<u32>` of `weight` unique indices in `[0, p.n)`.
+pub fn vect_generate_random_support1_ref(p: &crate::parameters::HqcParameters, ctx: &mut Shake256IncCtx, weight: usize) -> Vec<u32> {
     let mut support = vec![0u32; weight];
     unsafe {
         vect_generate_random_support1(
@@ -91,8 +92,8 @@ pub fn vect_generate_random_support1_ref(ctx: &mut Shake256IncCtx, weight: usize
 /// * `weight` - Desired Hamming weight.
 ///
 /// # Returns
-/// A `Vec<u32>` of `weight` unique indices in `[0, PARAM_N)`.
-pub fn vect_generate_random_support2_ref(ctx: &mut Shake256IncCtx, weight: usize) -> Vec<u32> {
+/// A `Vec<u32>` of `weight` unique indices in `[0, p.n)`.
+pub fn vect_generate_random_support2_ref(p: &crate::parameters::HqcParameters, ctx: &mut Shake256IncCtx, weight: usize) -> Vec<u32> {
     let mut support = vec![0u32; weight];
     unsafe {
         vect_generate_random_support2(
@@ -110,9 +111,9 @@ pub fn vect_generate_random_support2_ref(ctx: &mut Shake256IncCtx, weight: usize
 /// Each index in `support` sets a corresponding bit in `v`.
 ///
 /// # Arguments
-/// * `v`       - Output bit-vector of `VEC_N_SIZE_64` 64-bit words.
+/// * `v`       - Output bit-vector of `p.vec_n_size_64` 64-bit words.
 /// * `support` - Slice of bit indices to set.
-pub fn vect_write_support_to_vector_ref(v: &mut [u64; VEC_N_SIZE_64], support: &[u32]) {
+pub fn vect_write_support_to_vector_ref(p: &crate::parameters::HqcParameters, v: &mut [u64], support: &[u32]) {
     unsafe {
         vect_write_support_to_vector(v.as_mut_ptr(), support.as_ptr(), support.len() as u16);
     }
@@ -128,12 +129,12 @@ pub fn vect_write_support_to_vector_ref(v: &mut [u64; VEC_N_SIZE_64], support: &
 /// * `weight` - Desired Hamming weight.
 ///
 /// # Returns
-/// A bit-vector of `VEC_N_SIZE_64` 64-bit words with exactly `weight` bits set.
-pub fn vect_sample_fixed_weight1_ref(
+/// A bit-vector of `p.vec_n_size_64` 64-bit words with exactly `weight` bits set.
+pub fn vect_sample_fixed_weight1_ref(p: &crate::parameters::HqcParameters, 
     ctx: &mut Shake256IncCtx,
     weight: usize,
-) -> [u64; VEC_N_SIZE_64] {
-    let mut v = [0u64; VEC_N_SIZE_64];
+) -> Vec<u64> {
+    let mut v = vec![0u64; p.vec_n_size_64];
     unsafe {
         vect_sample_fixed_weight1(ctx as *mut Shake256IncCtx, v.as_mut_ptr(), weight as u16);
     }
@@ -152,12 +153,12 @@ pub fn vect_sample_fixed_weight1_ref(
 /// * `weight` - Desired Hamming weight.
 ///
 /// # Returns
-/// A bit-vector of `VEC_N_SIZE_64` 64-bit words with exactly `weight` bits set.
-pub fn vect_sample_fixed_weight2_ref(
+/// A bit-vector of `p.vec_n_size_64` 64-bit words with exactly `weight` bits set.
+pub fn vect_sample_fixed_weight2_ref(p: &crate::parameters::HqcParameters, 
     ctx: &mut Shake256IncCtx,
     weight: usize,
-) -> [u64; VEC_N_SIZE_64] {
-    let mut v = [0u64; VEC_N_SIZE_64];
+) -> Vec<u64> {
+    let mut v = vec![0u64; p.vec_n_size_64];
     unsafe {
         vect_sample_fixed_weight2(ctx as *mut Shake256IncCtx, v.as_mut_ptr(), weight as u16);
     }
@@ -173,7 +174,7 @@ pub fn vect_sample_fixed_weight2_ref(
 /// * `v1`   - First input vector.
 /// * `v2`   - Second input vector.
 /// * `size` - Number of 64-bit words to process.
-pub fn vect_add_ref(o: &mut [u64], v1: &[u64], v2: &[u64], size: usize) {
+pub fn vect_add_ref(p: &crate::parameters::HqcParameters, o: &mut [u64], v1: &[u64], v2: &[u64], size: usize) {
     assert!(o.len() >= size, "output buffer too small");
     assert!(v1.len() >= size, "v1 buffer too small");
     assert!(v2.len() >= size, "v2 buffer too small");
@@ -184,16 +185,16 @@ pub fn vect_add_ref(o: &mut [u64], v1: &[u64], v2: &[u64], size: usize) {
 
 /// Safe wrapper around the C `vect_set_random` function.
 ///
-/// Generates a random binary vector of dimension `PARAM_N` using
-/// the XOF context, masking off any bits beyond `PARAM_N`.
+/// Generates a random binary vector of dimension `p.n` using
+/// the XOF context, masking off any bits beyond `p.n`.
 ///
 /// # Arguments
 /// * `ctx` - Previously initialized `Shake256IncCtx`.
 ///
 /// # Returns
-/// A random bit-vector of `VEC_N_SIZE_64` 64-bit words.
-pub fn vect_set_random_ref(ctx: &mut Shake256IncCtx) -> [u64; VEC_N_SIZE_64] {
-    let mut v = [0u64; VEC_N_SIZE_64];
+/// A random bit-vector of `p.vec_n_size_64` 64-bit words.
+pub fn vect_set_random_ref(p: &crate::parameters::HqcParameters, ctx: &mut Shake256IncCtx) -> Vec<u64> {
+    let mut v = vec![0u64; p.vec_n_size_64];
     unsafe {
         ffi_vect_set_random(ctx as *mut Shake256IncCtx, v.as_mut_ptr());
     }
@@ -210,18 +211,18 @@ pub fn vect_set_random_ref(ctx: &mut Shake256IncCtx) -> [u64; VEC_N_SIZE_64] {
 ///
 /// # Returns
 /// `0` if the vectors are equal, `1` otherwise.
-pub fn vect_compare_ref(v1: &[u8], v2: &[u8]) -> u8 {
+pub fn vect_compare_ref(p: &crate::parameters::HqcParameters, v1: &[u8], v2: &[u8]) -> u8 {
     assert_eq!(v1.len(), v2.len(), "vectors must have equal length");
     unsafe { vect_compare(v1.as_ptr(), v2.as_ptr(), v1.len() as u32) }
 }
 
 /// Safe wrapper around the C `vect_truncate` function.
 ///
-/// Truncates a bit-vector in-place to `PARAM_N1N2` bits.
+/// Truncates a bit-vector in-place to `p.n1n2` bits.
 ///
 /// # Arguments
-/// * `v` - Bit-vector of `VEC_N_SIZE_64` 64-bit words to truncate.
-pub fn vect_truncate_ref(v: &mut [u64; VEC_N_SIZE_64]) {
+/// * `v` - Bit-vector of `p.vec_n_size_64` 64-bit words to truncate.
+pub fn vect_truncate_ref(p: &crate::parameters::HqcParameters, v: &mut [u64]) {
     unsafe {
         vect_truncate(v.as_mut_ptr());
     }
@@ -229,6 +230,7 @@ pub fn vect_truncate_ref(v: &mut [u64; VEC_N_SIZE_64]) {
 
 #[test]
 fn test_vect_generate_random_support1() {
+    let p = &HQC_1;
     let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
     let seed_evil: [u8; SEED_BYTES] = b"1ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
 
@@ -236,8 +238,8 @@ fn test_vect_generate_random_support1() {
     let mut ctx_ref = xof_init_ref(&seed);
 
     for i in 0..100 {
-        let support = crate::vector::vect_generate_random_support1(&mut ctx, PARAM_OMEGA);
-        let support_ref = vect_generate_random_support1_ref(&mut ctx_ref, PARAM_OMEGA);
+        let support = crate::vector::vect_generate_random_support1(p, &mut ctx, p.omega);
+        let support_ref = vect_generate_random_support1_ref(p, &mut ctx_ref, p.omega);
 
         assert_eq!(
             support, support_ref,
@@ -249,8 +251,8 @@ fn test_vect_generate_random_support1() {
     let mut ctx = crate::symmetric::xof_init(&seed);
     let mut ctx_ref_evil = xof_init_ref(&seed_evil);
 
-    let support = crate::vector::vect_generate_random_support1(&mut ctx, PARAM_OMEGA);
-    let support_ref_evil = vect_generate_random_support1_ref(&mut ctx_ref_evil, PARAM_OMEGA);
+    let support = crate::vector::vect_generate_random_support1(p, &mut ctx, p.omega);
+    let support_ref_evil = vect_generate_random_support1_ref(p, &mut ctx_ref_evil, p.omega);
 
     assert_ne!(
         support, support_ref_evil,
@@ -260,6 +262,7 @@ fn test_vect_generate_random_support1() {
 
 #[test]
 fn test_vect_generate_random_support2() {
+    let p = &HQC_1;
     let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
     let seed_evil: [u8; SEED_BYTES] = b"1ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
 
@@ -267,8 +270,8 @@ fn test_vect_generate_random_support2() {
     let mut ctx_ref = xof_init_ref(&seed);
 
     for i in 0..100 {
-        let support = crate::vector::vect_generate_random_support2(&mut ctx, PARAM_OMEGA);
-        let support_ref = vect_generate_random_support2_ref(&mut ctx_ref, PARAM_OMEGA);
+        let support = crate::vector::vect_generate_random_support2(p, &mut ctx, p.omega);
+        let support_ref = vect_generate_random_support2_ref(p, &mut ctx_ref, p.omega);
 
         assert_eq!(
             support, support_ref,
@@ -280,8 +283,8 @@ fn test_vect_generate_random_support2() {
     let mut ctx = crate::symmetric::xof_init(&seed);
     let mut ctx_ref_evil = xof_init_ref(&seed_evil);
 
-    let support = crate::vector::vect_generate_random_support2(&mut ctx, PARAM_OMEGA);
-    let support_ref_evil = vect_generate_random_support2_ref(&mut ctx_ref_evil, PARAM_OMEGA);
+    let support = crate::vector::vect_generate_random_support2(p, &mut ctx, p.omega);
+    let support_ref_evil = vect_generate_random_support2_ref(p, &mut ctx_ref_evil, p.omega);
 
     assert_ne!(
         support, support_ref_evil,
@@ -291,18 +294,19 @@ fn test_vect_generate_random_support2() {
 
 #[test]
 fn test_vect_write_support_to_vector() {
+    let p = &HQC_1;
     let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
 
     let mut ctx = crate::symmetric::xof_init(&seed);
 
     for i in 0..100 {
-        let mut support = crate::vector::vect_generate_random_support1(&mut ctx, PARAM_OMEGA);
+        let mut support = crate::vector::vect_generate_random_support1(p, &mut ctx, p.omega);
 
-        let mut v = [0u64; VEC_N_SIZE_64];
-        let mut v_ref = [0u64; VEC_N_SIZE_64];
+        let mut v = vec![0u64; p.vec_n_size_64];
+        let mut v_ref = vec![0u64; p.vec_n_size_64];
 
-        crate::vector::vect_write_support_to_vector(&mut v, &support);
-        vect_write_support_to_vector_ref(&mut v_ref, &support);
+        crate::vector::vect_write_support_to_vector(p, &mut v, &support);
+        vect_write_support_to_vector_ref(p, &mut v_ref, &support);
 
         assert_eq!(
             v, v_ref,
@@ -311,9 +315,9 @@ fn test_vect_write_support_to_vector() {
         );
 
         support[10] = support[10].wrapping_neg();
-        let mut v = [0u64; VEC_N_SIZE_64];
+        let mut v = vec![0u64; p.vec_n_size_64];
 
-        crate::vector::vect_write_support_to_vector(&mut v, &support);
+        crate::vector::vect_write_support_to_vector(p, &mut v, &support);
 
         assert_ne!(
             v, v_ref,
@@ -325,14 +329,15 @@ fn test_vect_write_support_to_vector() {
 
 #[test]
 fn test_vect_sample_fixed_weight1() {
+    let p = &HQC_1;
     let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
 
     let mut ctx = crate::symmetric::xof_init(&seed);
     let mut ctx_ref = xof_init_ref(&seed);
 
     for i in 0..100 {
-        let v = crate::vector::vect_sample_fixed_weight1(&mut ctx, PARAM_OMEGA);
-        let v_ref = crate::vector::tests_ffi::vect_sample_fixed_weight1_ref(&mut ctx_ref, PARAM_OMEGA);
+        let v = crate::vector::vect_sample_fixed_weight1(p, &mut ctx, p.omega);
+        let v_ref = crate::vector::tests_ffi::vect_sample_fixed_weight1_ref(p, &mut ctx_ref, p.omega);
 
         assert_eq!(
             v, v_ref,
@@ -344,14 +349,15 @@ fn test_vect_sample_fixed_weight1() {
 
 #[test]
 fn test_vect_sample_fixed_weight2() {
+    let p = &HQC_1;
     let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
 
     let mut ctx = crate::symmetric::xof_init(&seed);
     let mut ctx_ref = xof_init_ref(&seed);
 
     for i in 0..100 {
-        let v = crate::vector::vect_sample_fixed_weight2(&mut ctx, PARAM_OMEGA);
-        let v_ref = crate::vector::tests_ffi::vect_sample_fixed_weight2_ref(&mut ctx_ref, PARAM_OMEGA);
+        let v = crate::vector::vect_sample_fixed_weight2(p, &mut ctx, p.omega);
+        let v_ref = crate::vector::tests_ffi::vect_sample_fixed_weight2_ref(p, &mut ctx_ref, p.omega);
 
         assert_eq!(
             v, v_ref,
@@ -363,14 +369,15 @@ fn test_vect_sample_fixed_weight2() {
 
 #[test]
 fn test_vect_set_random() {
+    let p = &HQC_1;
     let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
 
     let mut ctx = crate::symmetric::xof_init(&seed);
     let mut ctx_ref = xof_init_ref(&seed);
 
     for i in 0..100 {
-        let v = crate::vector::vect_set_random(&mut ctx);
-        let v_ref = crate::vector::tests_ffi::vect_set_random_ref(&mut ctx_ref);
+        let v = crate::vector::vect_set_random(p, &mut ctx);
+        let v_ref = crate::vector::tests_ffi::vect_set_random_ref(p, &mut ctx_ref);
         assert_eq!(
             v, v_ref,
             "C and Rust must produce identical bit-vectors at iteration {}",
@@ -381,20 +388,21 @@ fn test_vect_set_random() {
 
 #[test]
 fn test_vect_add() {
+    let p = &HQC_1;
     const TEST_ROUNDS: u64 = 100;
     let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
     let mut ctx1 = crate::symmetric::xof_init(&seed);
 
     for i in 0..TEST_ROUNDS {
-        let v1 = crate::vector::vect_set_random(&mut ctx1);
-        let v2 = crate::vector::vect_set_random(&mut ctx1);
+        let v1 = crate::vector::vect_set_random(p, &mut ctx1);
+        let v2 = crate::vector::vect_set_random(p, &mut ctx1);
 
-        let mut o_proc = vec![0u64; VEC_N_SIZE_64];
-        let mut o_ref = vec![0u64; VEC_N_SIZE_64];
+        let mut o_proc = vec![0u64; p.vec_n_size_64];
+        let mut o_ref = vec![0u64; p.vec_n_size_64];
 
-        let o = crate::vector::vect_add(&v1, &v2, VEC_N_SIZE_64);
+        let o = crate::vector::vect_add(&v1, &v2, p.vec_n_size_64);
         crate::vector::vect_add_into(&mut o_proc, &v1, &v2);
-        vect_add_ref(&mut o_ref, &v1, &v2, VEC_N_SIZE_64);
+        vect_add_ref(p, &mut o_ref, &v1, &v2, p.vec_n_size_64);
 
         assert_eq!(o, o_ref, "Rust and C must match at iteration {}", i);
         assert_eq!(o_proc, o_ref, "Rust and C must match at iteration {}", i);
@@ -403,6 +411,7 @@ fn test_vect_add() {
 
 #[test]
 fn test_vect_add_perf_comparison() {
+    let p = &HQC_1;
     const TEST_ROUNDS: u64 = 100;
     let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
     let mut ctx1 = crate::symmetric::xof_init(&seed);
@@ -415,14 +424,14 @@ fn test_vect_add_perf_comparison() {
     let mut cycles_c = 0;
 
     for _i in 0..TEST_ROUNDS {
-        let v1 = crate::vector::vect_set_random(&mut ctx1);
-        let v2 = crate::vector::vect_set_random(&mut ctx1);
-        let mut o_ref = vec![0u64; VEC_N_SIZE_64];
+        let v1 = crate::vector::vect_set_random(p, &mut ctx1);
+        let v2 = crate::vector::vect_set_random(p, &mut ctx1);
+        let mut o_ref = vec![0u64; p.vec_n_size_64];
 
         unsafe {
             pre = core::arch::x86_64::_rdtsc();
         }
-        vect_add_ref(&mut o_ref, &v1, &v2, VEC_N_SIZE_64);
+        vect_add_ref(p, &mut o_ref, &v1, &v2, p.vec_n_size_64);
         unsafe {
             post = core::arch::x86_64::_rdtsc();
         }
@@ -430,22 +439,22 @@ fn test_vect_add_perf_comparison() {
         cycles_c += post - pre;
     }
     for _i in 0..TEST_ROUNDS {
-        let v1 = crate::vector::vect_set_random(&mut ctx1);
-        let v2 = crate::vector::vect_set_random(&mut ctx1);
+        let v1 = crate::vector::vect_set_random(p, &mut ctx1);
+        let v2 = crate::vector::vect_set_random(p, &mut ctx1);
         let _o;
         unsafe {
             pre = core::arch::x86_64::_rdtsc();
         }
-        _o = crate::vector::vect_add(&v1, &v2, VEC_N_SIZE_64);
+        _o = crate::vector::vect_add(&v1, &v2, p.vec_n_size_64);
         unsafe {
             post = core::arch::x86_64::_rdtsc();
         }
         cycles_rust += post - pre;
     }
     for _i in 0..TEST_ROUNDS {
-        let v1 = crate::vector::vect_set_random(&mut ctx1);
-        let v2 = crate::vector::vect_set_random(&mut ctx1);
-        let mut o_proc = vec![0u64; VEC_N_SIZE_64];
+        let v1 = crate::vector::vect_set_random(p, &mut ctx1);
+        let v2 = crate::vector::vect_set_random(p, &mut ctx1);
+        let mut o_proc = vec![0u64; p.vec_n_size_64];
 
         unsafe {
             pre = core::arch::x86_64::_rdtsc();
@@ -468,13 +477,14 @@ fn test_vect_add_perf_comparison() {
 
 #[test]
 fn test_vect_compare() {
+    let p = &HQC_1;
     const TEST_ROUNDS: u64 = 100;
     let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
     let mut ctx1 = crate::symmetric::xof_init(&seed);
 
     for i in 0..TEST_ROUNDS {
-        let mut v1 = vec![0u8; VEC_N_SIZE_BYTES];
-        let mut v2 = vec![0u8; VEC_N_SIZE_BYTES];
+        let mut v1 = vec![0u8; p.vec_n_size_bytes];
+        let mut v2 = vec![0u8; p.vec_n_size_bytes];
         ctx1.read(&mut v1);
         ctx1.read(&mut v2);
         if v1[0] % 2 == 0 {
@@ -483,7 +493,7 @@ fn test_vect_compare() {
         }
         assert_eq!(
             crate::vector::vect_compare(&v1, &v2),
-            vect_compare_ref(&v1, &v2),
+            vect_compare_ref(p, &v1, &v2),
             "Rust and C must agree at iteration {}",
             i
         );
@@ -492,17 +502,18 @@ fn test_vect_compare() {
 
 #[test]
 fn test_vect_truncate() {
+    let p = &HQC_1;
     const TEST_ROUNDS: u64 = 100;
     let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
     let mut ctx1 = crate::symmetric::xof_init(&seed);
     let mut ctx2 = crate::symmetric::xof_init(&seed);
 
     for i in 0..TEST_ROUNDS {
-        let mut v = crate::vector::vect_set_random(&mut ctx1);
-        let mut v_ref = crate::vector::vect_set_random(&mut ctx2);
+        let mut v = crate::vector::vect_set_random(p, &mut ctx1);
+        let mut v_ref = crate::vector::vect_set_random(p, &mut ctx2);
 
-        crate::vector::vect_truncate(&mut v);
-        vect_truncate_ref(&mut v_ref);
+        crate::vector::vect_truncate(p, &mut v);
+        vect_truncate_ref(p, &mut v_ref);
 
         assert_eq!(v, v_ref, "Rust and C must match at iteration {}", i);
     }

@@ -13,31 +13,31 @@ pub fn compare_u32(a: u32, b: u32) -> u32 {
     1u32 ^ (diff >> 31)
 }
 
-/// Constant-time Barrett reduction modulo `PARAM_N`.
+/// Constant-time Barrett reduction modulo `p.n`.
 ///
-/// Reduces `x` modulo `PARAM_N` using the precomputed value
-/// `PARAM_N_MU = ⌊2^32 / PARAM_N⌋`.
+/// Reduces `x` modulo `p.n` using the precomputed value
+/// `p.n_mu = ⌊2^32 / p.n⌋`.
 ///
 /// # Arguments
 /// * `x` - Input value to reduce.
 ///
 /// # Returns
-/// `x mod PARAM_N` in constant time.
+/// `x mod p.n` in constant time.
 #[inline]
-pub fn barrett_reduce(x: u32) -> u32 {
-    let q = ((x as u64) * (PARAM_N_MU as u64)) >> 32;
-    let r = x.wrapping_sub((q as u32).wrapping_mul(PARAM_N as u32));
-    let reduce_flag = ((r.wrapping_sub(PARAM_N as u32)) >> 31) ^ 1;
+pub fn barrett_reduce(p: &HqcParameters, x: u32) -> u32 {
+    let q = ((x as u64) * (p.n_mu as u64)) >> 32;
+    let r = x.wrapping_sub((q as u32).wrapping_mul(p.n as u32));
+    let reduce_flag = ((r.wrapping_sub(p.n as u32)) >> 31) ^ 1;
     let mask = reduce_flag.wrapping_neg();
-    r.wrapping_sub(mask & PARAM_N as u32)
+    r.wrapping_sub(mask & p.n as u32)
 }
 
 /// Generates a random support set with uniform and unbiased sampling.
 ///
 /// Implements a rejection sampling algorithm to generate `weight`
-/// distinct indices uniformly at random from the interval `[0, PARAM_N)`.
+/// distinct indices uniformly at random from the interval `[0, p.n)`.
 ///
-///  Internally, it samples 24-bit random values and rejects any value ≥ UTILS_REJECTION_THRESHOLD,
+///  Internally, it samples 24-bit random values and rejects any value ≥ p.rejection_threshold,
 /// where the threshold is precomputed as:
 /// \f[
 ///   t = \left\lfloor \frac{2^{24}}{\text{PARAM\_N}} \right\rfloor \times \text{PARAM\_N}
@@ -49,7 +49,11 @@ pub fn barrett_reduce(x: u32) -> u32 {
 ///
 /// # Returns
 /// A `Vec<u32>` containing `weight` unique indices.
-pub fn vect_generate_random_support1(reader: &mut impl XofReader, weight: usize) -> Vec<u32> {
+pub fn vect_generate_random_support1(
+    p: &HqcParameters,
+    reader: &mut impl XofReader,
+    weight: usize,
+) -> Vec<u32> {
     let mut support = Vec::with_capacity(weight);
 
     while support.len() < weight {
@@ -60,11 +64,11 @@ pub fn vect_generate_random_support1(reader: &mut impl XofReader, weight: usize)
             (rand_bytes[0] as u32) | ((rand_bytes[1] as u32) << 8) | ((rand_bytes[2] as u32) << 16);
 
         // Rejection sampling — discard values above threshold
-        if candidate >= UTILS_REJECTION_THRESHOLD {
+        if candidate >= p.rejection_threshold {
             continue;
         }
 
-        let candidate = barrett_reduce(candidate);
+        let candidate = barrett_reduce(p, candidate);
 
         // Only accept if not already in support (uniqueness check)
         if !support.contains(&candidate) {
@@ -85,7 +89,11 @@ pub fn vect_generate_random_support1(reader: &mut impl XofReader, weight: usize)
 ///
 /// # Returns
 /// A `Vec<u32>` of `weight` unique indices.
-pub fn vect_generate_random_support2(reader: &mut impl XofReader, weight: usize) -> Vec<u32> {
+pub fn vect_generate_random_support2(
+    p: &HqcParameters,
+    reader: &mut impl XofReader,
+    weight: usize,
+) -> Vec<u32> {
     // Read bytes then convert explicitly (little-endian)
     let mut rand_bytes = vec![0u8; 4 * weight];
     reader.read(&mut rand_bytes);
@@ -98,7 +106,7 @@ pub fn vect_generate_random_support2(reader: &mut impl XofReader, weight: usize)
     let mut support = vec![0u32; weight];
     for i in 0..weight {
         let buff = rand_u32[i] as u64;
-        support[i] = i as u32 + ((buff * (PARAM_N as u64 - i as u64)) >> 32) as u32;
+        support[i] = i as u32 + ((buff * (p.n as u64 - i as u64)) >> 32) as u32;
     }
 
     // Phase 2: Constant-time collision resolution (backwards pass)
@@ -124,15 +132,17 @@ pub fn vect_generate_random_support2(reader: &mut impl XofReader, weight: usize)
 /// Each index in `support` sets a corresponding bit in `v`.
 ///
 /// # Arguments
-/// * `v`       - Output bit-vector of `VEC_N_SIZE_64` 64-bit words.
+/// * `v`       - Output bit-vector of `p.vec_n_size_64` 64-bit words.
 /// * `support` - Slice of bit indices to set, from `vect_generate_random_support`.
-pub fn vect_write_support_to_vector(v: &mut [u64; VEC_N_SIZE_64], support: &[u32]) {
+pub fn vect_write_support_to_vector(p: &HqcParameters, v: &mut [u64], support: &[u32]) {
+    assert_eq!(v.len(), p.vec_n_size_64);
+    assert!(support.len() <= MAX_OMEGA_R);
     // Precompute word indices and bit masks for each support position
-    let mut index_tab = [0u32; PARAM_OMEGA_R];
-    let mut bit_tab = [0u64; PARAM_OMEGA_R];
+    let mut index_tab = [0u32; MAX_OMEGA_R];
+    let mut bit_tab = [0u64; MAX_OMEGA_R];
 
     for (i, &s) in support.iter().enumerate() {
-        index_tab[i] = s >> 6; // which 64-bit word of the PARAM_N-bit vector.
+        index_tab[i] = s >> 6; // which 64-bit word of the p.n-bit vector.
         let pos = (s & 0x3f) as u64; // which bit within the word
         bit_tab[i] = 1u64 << pos; // TODO Prone to platform-dependent timing attack!
 
@@ -147,7 +157,7 @@ pub fn vect_write_support_to_vector(v: &mut [u64; VEC_N_SIZE_64], support: &[u32
     }
 
     // For each 64-bit word, accumulate bits from matching support entries
-    for i in 0..VEC_N_SIZE_64 {
+    for i in 0..p.vec_n_size_64 {
         let mut val = 0u64;
         for j in 0..support.len() {
             let tmp = (i as u32).wrapping_sub(index_tab[j]);
@@ -172,14 +182,15 @@ pub fn vect_write_support_to_vector(v: &mut [u64; VEC_N_SIZE_64], support: &[u32
 /// * `weight` - Desired Hamming weight.
 ///
 /// # Returns
-/// A bit-vector of `VEC_N_SIZE_64` 64-bit words with exactly `weight` bits set.
+/// A bit-vector of `p.vec_n_size_64` 64-bit words with exactly `weight` bits set.
 pub fn vect_sample_fixed_weight1(
+    p: &HqcParameters,
     reader: &mut impl XofReader,
     weight: usize,
-) -> [u64; VEC_N_SIZE_64] {
-    let support = vect_generate_random_support1(reader, weight);
-    let mut v = [0u64; VEC_N_SIZE_64];
-    vect_write_support_to_vector(&mut v, &support);
+) -> Vec<u64> {
+    let support = vect_generate_random_support1(p, reader, weight);
+    let mut v = p.zero_vec_n();
+    vect_write_support_to_vector(p, &mut v, &support);
     v
 }
 
@@ -194,20 +205,21 @@ pub fn vect_sample_fixed_weight1(
 /// * `weight` - Desired Hamming weight.
 ///
 /// # Returns
-/// A bit-vector of `VEC_N_SIZE_64` 64-bit words with exactly `weight` bits set.
+/// A bit-vector of `p.vec_n_size_64` 64-bit words with exactly `weight` bits set.
 pub fn vect_sample_fixed_weight2(
+    p: &HqcParameters,
     reader: &mut impl XofReader,
     weight: usize,
-) -> [u64; VEC_N_SIZE_64] {
-    let support = vect_generate_random_support2(reader, weight);
-    let mut v = [0u64; VEC_N_SIZE_64];
-    vect_write_support_to_vector(&mut v, &support);
+) -> Vec<u64> {
+    let support = vect_generate_random_support2(p, reader, weight);
+    let mut v = p.zero_vec_n();
+    vect_write_support_to_vector(p, &mut v, &support);
     v
 }
 
-/// Generates a random vector of dimension `PARAM_N`.
+/// Generates a random vector of dimension `p.n`.
 ///
-/// Generates a random binary vector of dimension `PARAM_N` by reading
+/// Generates a random binary vector of dimension `p.n` by reading
 /// random bytes from the XOF and masking off the extra bits in the
 /// last 64-bit word.
 ///
@@ -215,28 +227,28 @@ pub fn vect_sample_fixed_weight2(
 /// * `reader` - Initialized SHAKE256 XOF reader.
 ///
 /// # Returns
-/// A random bit-vector of `VEC_N_SIZE_64` 64-bit words.
-pub fn vect_set_random(reader: &mut impl XofReader) -> [u64; VEC_N_SIZE_64] {
+/// A random bit-vector of `p.vec_n_size_64` 64-bit words.
+pub fn vect_set_random(p: &HqcParameters, reader: &mut impl XofReader) -> Vec<u64> {
     // Read random bytes safely
-    let mut rand_bytes = [0u8; VEC_N_SIZE_BYTES];
+    let mut rand_bytes = vec![0u8; p.vec_n_size_bytes];
     reader.read(&mut rand_bytes);
 
     // Convert bytes to u64 words in little-endian to match C behavior
-    let mut v = [0u64; VEC_N_SIZE_64];
+    let mut v = p.zero_vec_n();
 
     for (i, chunk) in rand_bytes.chunks_exact(8).enumerate() {
         v[i] = u64::from_le_bytes(chunk.try_into().unwrap()); // ← always 8 bytes
     }
     // Handle remainder once, outside the loop
-    let remainder = VEC_N_SIZE_BYTES % 8;
+    let remainder = p.vec_n_size_bytes % 8;
     if remainder > 0 {
         let mut last = [0u8; 8];
-        last[..remainder].copy_from_slice(&rand_bytes[VEC_N_SIZE_BYTES - remainder..]);
-        v[VEC_N_SIZE_64 - 1] = u64::from_le_bytes(last);
+        last[..remainder].copy_from_slice(&rand_bytes[p.vec_n_size_bytes - remainder..]);
+        v[p.vec_n_size_64 - 1] = u64::from_le_bytes(last);
     }
 
-    // Mask off bits beyond PARAM_N in the last word
-    v[VEC_N_SIZE_64 - 1] &= bitmask(PARAM_N, 64);
+    // Mask off bits beyond n in the last word
+    v[p.vec_n_size_64 - 1] &= p.top_word_mask();
 
     v
 }
@@ -294,14 +306,15 @@ pub fn vect_compare(v1: &[u8], v2: &[u8]) -> u8 {
     ((r - 1) >> 8) as u8
 }
 
-/// Truncates a bit-vector in-place to `PARAM_N1N2` bits,
+/// Truncates a bit-vector in-place to `p.n1n2` bits,
 /// zeroing out all bits beyond that.
 ///
 /// # Arguments
-/// * `v` - Bit-vector of `VEC_N_SIZE_64` 64-bit words to truncate.
-pub fn vect_truncate(v: &mut [u64; VEC_N_SIZE_64]) {
-    let new_full_words = PARAM_N1N2 / 64;
-    let remaining_bits = PARAM_N1N2 % 64;
+/// * `v` - Bit-vector of `p.vec_n_size_64` 64-bit words to truncate.
+pub fn vect_truncate(p: &HqcParameters, v: &mut [u64]) {
+    assert_eq!(v.len(), p.vec_n_size_64);
+    let new_full_words = p.n1n2 / 64;
+    let remaining_bits = p.n1n2 % 64;
 
     // Mask the partial word at the truncation boundary
     let mut first_zero = new_full_words;
@@ -312,10 +325,13 @@ pub fn vect_truncate(v: &mut [u64; VEC_N_SIZE_64]) {
     }
 
     // Zero out all words beyond the truncation point
-    for i in first_zero..VEC_N_SIZE_64 {
+    for i in first_zero..p.vec_n_size_64 {
         v[i] = 0;
     }
 }
+
+#[cfg(test)]
+mod tests;
 
 #[cfg(all(test, feature = "ref-ffi"))]
 mod tests_ffi;

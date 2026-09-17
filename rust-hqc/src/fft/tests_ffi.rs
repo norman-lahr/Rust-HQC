@@ -1,4 +1,4 @@
-use crate::parameters::{PARAM_DELTA, PARAM_FFT, PARAM_M, VEC_N_SIZE_BYTES};
+use crate::parameters::{HQC_1, PARAM_M};
 
 use rand::prelude::*;
 use rand::{rngs::StdRng, SeedableRng};
@@ -55,7 +55,7 @@ pub fn fft_ref(f: &[u16], f_coeffs: usize) -> Vec<u16> {
 }
 
 /// Safe wrapper around the C `fft_retrieve_error_poly` function.
-pub fn fft_retrieve_error_poly_ref(w: &[u16], error_len: usize) -> Vec<u8> {
+pub fn fft_retrieve_error_poly_ref(p: &crate::parameters::HqcParameters, w: &[u16], error_len: usize) -> Vec<u8> {
     let mut error = vec![0u8; error_len];
     unsafe {
         fft_retrieve_error_poly(error.as_mut_ptr(), w.as_ptr());
@@ -111,7 +111,7 @@ pub fn fft_retrieve_error_poly_ref(w: &[u16], error_len: usize) -> Vec<u8> {
 //     const TEST_ROUNDS: u64 = 100;
 //     let mut rng = StdRng::seed_from_u64(4u64);
 //     // radix_big is used for m_f > 4 (small cases handled directly in radix)
-//     for m_f in 5..=PARAM_FFT {
+//     for m_f in 5..=p.fft_exp {
 //         let size = 1usize << m_f;
 //         for i in 0..TEST_ROUNDS {
 //             let f: Vec<u16> = (0..size).map(|_| rng.random_range(0..=u16::MAX)).collect();
@@ -130,16 +130,17 @@ pub fn fft_retrieve_error_poly_ref(w: &[u16], error_len: usize) -> Vec<u8> {
 
 #[test]
 fn test_fft() {
+    let p = &HQC_1;
     const TEST_ROUNDS: u64 = 100;
     let mut rng = StdRng::seed_from_u64(4u64);
-    let f_coeffs = PARAM_DELTA + 1;
+    let f_coeffs = p.delta + 1;
 
     for i in 0..TEST_ROUNDS {
-        let f: Vec<u16> = (0..(1usize << PARAM_FFT))
+        let f: Vec<u16> = (0..(1usize << p.fft_exp))
             .map(|_| rng.random_range(0..=u16::MAX))
             .collect();
 
-        let w = crate::fft::fft(&f, f_coeffs, PARAM_FFT);
+        let w = crate::fft::fft(&f, f_coeffs, p.fft_exp);
         let w_ref = fft_ref(&f, f_coeffs);
 
         assert_eq!(w, w_ref, "Rust and C must agree at iteration {}", i);
@@ -148,9 +149,10 @@ fn test_fft() {
 
 #[test]
 fn test_fft_retrieve_error_poly() {
+    let p = &HQC_1;
     const TEST_ROUNDS: u64 = 100;
     let mut rng = StdRng::seed_from_u64(4u64);
-    let error_len = VEC_N_SIZE_BYTES;
+    let error_len = p.vec_n_size_bytes;
 
     for i in 0..TEST_ROUNDS {
         let w: Vec<u16> = (0..(1usize << PARAM_M))
@@ -160,7 +162,7 @@ fn test_fft_retrieve_error_poly() {
         let mut error_rs = vec![0u8; error_len];
         crate::fft::fft_retrieve_error_poly(&mut error_rs, &w);
 
-        let error_ref = fft_retrieve_error_poly_ref(&w, error_len);
+        let error_ref = fft_retrieve_error_poly_ref(p, &w, error_len);
 
         assert_eq!(
             error_rs, error_ref,

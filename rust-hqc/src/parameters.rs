@@ -11,6 +11,8 @@
 //!
 //! Reference: `hqc_specifications_2025_08_22.pdf`, Tables 3-6.
 
+use zeroize::Zeroizing;
+
 // ---------------------------------------------------------------------------
 // Invariants
 //
@@ -326,6 +328,41 @@ impl HqcParameters {
             0 => 64,
             bits => bits,
         }
+    }
+
+    /// A zeroed buffer of `vec_n_size_64` words, for public values.
+    pub fn zero_vec_n(&self) -> Vec<u64> {
+        vec![0u64; self.vec_n_size_64]
+    }
+
+    /// A zeroed buffer of `vec_n1n2_size_64` words, for public values.
+    pub fn zero_vec_n1n2(&self) -> Vec<u64> {
+        vec![0u64; self.vec_n1n2_size_64]
+    }
+
+    /// A zeroed buffer of `vec_n1_size_64` words, for public values.
+    pub fn zero_vec_n1(&self) -> Vec<u64> {
+        vec![0u64; self.vec_n1_size_64]
+    }
+
+    /// A zeroed buffer of `vec_k_size_64` words, for public values.
+    pub fn zero_vec_k(&self) -> Vec<u64> {
+        vec![0u64; self.vec_k_size_64]
+    }
+
+    /// A zeroed `vec_n_size_64` buffer that clears itself on drop.
+    ///
+    /// For secret-bearing vectors — `x`, `y`, `r1`, `r2`, `e` — where the
+    /// previous hand-rolled `iter_mut().for_each(|w| *w = 0)` was elidable by
+    /// the optimiser. Public values (`h`, `s`, ciphertext words) use
+    /// [`Self::zero_vec_n`] and pay nothing.
+    pub fn zero_secret_n(&self) -> Zeroizing<Vec<u64>> {
+        Zeroizing::new(vec![0u64; self.vec_n_size_64])
+    }
+
+    /// A zeroed `vec_k_size_64` buffer that clears itself on drop.
+    pub fn zero_secret_k(&self) -> Zeroizing<Vec<u64>> {
+        Zeroizing::new(vec![0u64; self.vec_k_size_64])
     }
 
     /// Returns row `i` of the alpha power table, `alpha_stride` entries wide.

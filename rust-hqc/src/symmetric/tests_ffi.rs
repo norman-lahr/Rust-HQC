@@ -1,6 +1,5 @@
-use crate::parameters::HQC_1;
+use crate::parameters::{HQC_1, SEED_BYTES, SALT_BYTES};
 use crate::kem::CiphertextKem;
-use crate::parameters::{PARAM_SECURITY_BYTES, PUBLIC_KEY_BYTES, SALT_BYTES, SEED_BYTES};
 use crate::pke::CiphertextPke;
 use rand::prelude::*;
 use rand::{rngs::StdRng, SeedableRng};
@@ -22,7 +21,7 @@ fn hash_i_ref(seed: &[u8]) -> [u8; 64] {
 /// Safe wrapper around the C `hash_g` function.
 pub fn hash_g_ref(
     hash_ek_kem: &[u8; SEED_BYTES],
-    m: &[u8; PARAM_SECURITY_BYTES],
+    m: &[u8],
     salt: &[u8; SALT_BYTES],
 ) -> [u8; 64] {
     let mut output = [0u8; 64];
@@ -48,17 +47,26 @@ pub fn hash_h_ref(ek_kem: &[u8]) -> [u8; 32] {
 
 /// Safe wrapper around the C `hash_j` function.
 pub fn hash_j_ref(
+    p: &crate::parameters::HqcParameters,
     hash_ek_kem: &[u8; SEED_BYTES],
-    sigma: &[u8; PARAM_SECURITY_BYTES],
+    sigma: &[u8],
     c_kem: &CiphertextKem,
 ) -> [u8; 32] {
     let mut output = [0u8; 32];
+    // C expects u ++ v ++ salt contiguously. `CiphertextKem` now holds `Vec`
+    // fields, so the struct pointer would be the Vec headers rather than the
+    // data; marshal through a flat buffer.
+    let mut flat = Vec::with_capacity(2 * p.vec_n_size_64 + 2);
+    flat.extend_from_slice(&c_kem.c_pke.u);
+    flat.extend_from_slice(&c_kem.c_pke.v);
+    flat.push(u64::from_le_bytes(c_kem.salt[..8].try_into().unwrap()));
+    flat.push(u64::from_le_bytes(c_kem.salt[8..].try_into().unwrap()));
     unsafe {
         hash_j(
             output.as_mut_ptr(),
             hash_ek_kem.as_ptr(),
             sigma.as_ptr(),
-            c_kem as *const CiphertextKem as *const u64,
+            flat.as_ptr(),
         );
     }
     output
@@ -84,7 +92,7 @@ pub fn xof_init_ref(seed: &[u8]) -> Shake256IncCtx {
 }
 
 /// Safe wrapper around the C `xof_get_bytes` function.
-pub fn xof_get_bytes_ref(ctx: &mut Shake256IncCtx, outlen: usize) -> Vec<u8> {
+pub fn xof_get_bytes_ref(p: &crate::parameters::HqcParameters, ctx: &mut Shake256IncCtx, outlen: usize) -> Vec<u8> {
     let mut output = vec![0u8; outlen];
     unsafe {
         xof_get_bytes(
@@ -98,6 +106,7 @@ pub fn xof_get_bytes_ref(ctx: &mut Shake256IncCtx, outlen: usize) -> Vec<u8> {
 
 #[test]
 fn test_hash_i() {
+    let p = &HQC_1;
     let seed = b"DEADBEEFDEADBEEFDEADBEEFDEADBEEF";
     let digest = crate::symmetric::hash_i(seed);
     let digest_ref = hash_i_ref(seed);
@@ -106,11 +115,12 @@ fn test_hash_i() {
 
 #[test]
 fn test_hash_g() {
+    let p = &HQC_1;
     const TEST_ROUNDS: u64 = 100;
     let mut rng = StdRng::seed_from_u64(4u64);
     for i in 0..TEST_ROUNDS {
         let hash_ek_kem: [u8; SEED_BYTES] = std::array::from_fn(|_| rng.random_range(0..=u8::MAX));
-        let m: [u8; PARAM_SECURITY_BYTES] = std::array::from_fn(|_| rng.random_range(0..=u8::MAX));
+        let m: Vec<u8> = (0..p.security_bytes).map(|_| rng.random_range(0..=u8::MAX)).collect();
         let salt: [u8; SALT_BYTES] = std::array::from_fn(|_| rng.random_range(0..=u8::MAX));
 
         let output = crate::symmetric::hash_g(&hash_ek_kem, &m, &salt);
@@ -126,10 +136,11 @@ fn test_hash_g() {
 
 #[test]
 fn test_hash_h() {
+    let p = &HQC_1;
     const TEST_ROUNDS: u64 = 100;
     let mut rng = StdRng::seed_from_u64(4u64);
     for i in 0..TEST_ROUNDS {
-        let ek_kem: Vec<u8> = (0..PUBLIC_KEY_BYTES)
+        let ek_kem: Vec<u8> = (0..p.ek_bytes)
             .map(|_| rng.random_range(0..=u8::MAX))
             .collect();
 
@@ -146,23 +157,23 @@ fn test_hash_h() {
 
 #[test]
 fn test_hash_j() {
+    let p = &HQC_1;
     const TEST_ROUNDS: u64 = 100;
     let mut rng = StdRng::seed_from_u64(4u64);
     for i in 0..TEST_ROUNDS {
         let hash_ek_kem: [u8; SEED_BYTES] = std::array::from_fn(|_| rng.random_range(0..=u8::MAX));
-        let sigma: [u8; PARAM_SECURITY_BYTES] =
-            std::array::from_fn(|_| rng.random_range(0..=u8::MAX));
+        let sigma: Vec<u8> = (0..p.security_bytes).map(|_| rng.random_range(0..=u8::MAX)).collect();
 
         let c_kem = CiphertextKem {
             c_pke: CiphertextPke {
-                u: std::array::from_fn(|_| rng.random_range(0..=u64::MAX)),
-                v: std::array::from_fn(|_| rng.random_range(0..=u64::MAX)),
+                u: (0..p.vec_n_size_64).map(|_| rng.random_range(0..=u64::MAX)).collect(),
+                v: (0..p.vec_n_size_64).map(|_| rng.random_range(0..=u64::MAX)).collect(),
             },
             salt: std::array::from_fn(|_| rng.random_range(0..=u8::MAX)),
         };
 
-        let output = crate::symmetric::hash_j(&HQC_1, &hash_ek_kem, &sigma, &c_kem);
-        let output_ref = hash_j_ref(&hash_ek_kem, &sigma, &c_kem);
+        let output = crate::symmetric::hash_j(p, &hash_ek_kem, &sigma, &c_kem);
+        let output_ref = hash_j_ref(p, &hash_ek_kem, &sigma, &c_kem);
 
         assert_eq!(
             output, output_ref,
@@ -174,6 +185,7 @@ fn test_hash_j() {
 
 #[test]
 fn test_xof_get_bytes() {
+    let p = &HQC_1;
     const TEST_SEED: [u8; SEED_BYTES] = *b"0ACE0ACE0ACE0ACE0ACE0ACE0ACE0ACE";
     let mut reader = crate::symmetric::xof_init(&TEST_SEED);
     let mut ctx_c = xof_init_ref(&TEST_SEED);
@@ -181,7 +193,7 @@ fn test_xof_get_bytes() {
     let mut out_rs = vec![0u8; 64];
     crate::symmetric::xof_get_bytes(&mut reader, &mut out_rs);
 
-    let out_ref = xof_get_bytes_ref(&mut ctx_c, 64);
+    let out_ref = xof_get_bytes_ref(p, &mut ctx_c, 64);
 
     assert_eq!(out_rs, out_ref, "Rust and C must agree on squeezed output");
 }

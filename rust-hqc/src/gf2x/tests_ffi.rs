@@ -5,16 +5,20 @@ use crate::ffi::hqc1::{vect_mul, vect_set_random as ffi_vect_set_random, xof_ini
 
 /// Safe wrapper around the C `vect_mul` function.
 ///
-/// Computes `o = a1 * a2` over GF(2) mod (X^PARAM_N - 1).
+/// Computes `o = a1 * a2` over GF(2) mod (X^p.n - 1).
 ///
 /// # Arguments
-/// * `a1` - Operand polynomial a(x) of `VEC_N_SIZE_64` 64-bit words.
-/// * `a2` - Operand polynomial b(x) of `VEC_N_SIZE_64` 64-bit words.
+/// * `a1` - Operand polynomial a(x) of `p.vec_n_size_64` 64-bit words.
+/// * `a2` - Operand polynomial b(x) of `p.vec_n_size_64` 64-bit words.
 ///
 /// # Returns
-/// Result of `VEC_N_SIZE_64` 64-bit words.
-pub fn vect_mul_ref(a1: &[u64; VEC_N_SIZE_64], a2: &[u64; VEC_N_SIZE_64]) -> [u64; VEC_N_SIZE_64] {
-    let mut o = [0u64; VEC_N_SIZE_64];
+/// Result of `p.vec_n_size_64` 64-bit words.
+pub fn vect_mul_ref(
+    p: &crate::parameters::HqcParameters,
+    a1: &[u64],
+    a2: &[u64],
+) -> Vec<u64> {
+    let mut o = vec![0u64; p.vec_n_size_64];
     unsafe {
         vect_mul(o.as_mut_ptr(), a1.as_ptr(), a2.as_ptr());
     }
@@ -23,6 +27,7 @@ pub fn vect_mul_ref(a1: &[u64; VEC_N_SIZE_64], a2: &[u64; VEC_N_SIZE_64]) -> [u6
 
 #[test]
 fn test_vect_mul() {
+    let p = &HQC_1;
     const TEST_ROUNDS: u64 = 100;
     let seed: [u8; SEED_BYTES] = b"0ACE".repeat(SEED_BYTES / 4).try_into().unwrap();
     let mut ctx1 = crate::symmetric::xof_init(&seed);
@@ -35,15 +40,15 @@ fn test_vect_mul() {
     let mut cycles_c = 0;
 
     for i in 0..TEST_ROUNDS {
-        let a1 = vect_set_random(&mut ctx1);
-        let a2 = vect_set_random(&mut ctx1);
-        let a1_ref = vect_set_random(&mut ctx2);
-        let a2_ref = vect_set_random(&mut ctx2);
+        let a1 = vect_set_random(p, &mut ctx1);
+        let a2 = vect_set_random(p, &mut ctx1);
+        let a1_ref = vect_set_random(p, &mut ctx2);
+        let a2_ref = vect_set_random(p, &mut ctx2);
 
         unsafe {
             pre = core::arch::x86_64::_rdtsc();
         }
-        let o_ref = vect_mul_ref(&a1_ref, &a2_ref);
+        let o_ref = vect_mul_ref(p, &a1_ref, &a2_ref);
         unsafe {
             post = core::arch::x86_64::_rdtsc();
         }
@@ -52,7 +57,7 @@ fn test_vect_mul() {
         unsafe {
             pre = core::arch::x86_64::_rdtsc();
         }
-        let o = crate::gf2x::vect_mul(&a1, &a2);
+        let o = crate::gf2x::vect_mul(p, &a1, &a2);
         unsafe {
             post = core::arch::x86_64::_rdtsc();
         }

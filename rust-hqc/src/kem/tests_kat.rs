@@ -96,37 +96,52 @@ pub fn parse_kat_file(path: &str) -> io::Result<Vec<KatVector>> {
     Ok(vectors)
 }
 
-/// Runs the full HQC-KEM KAT suite against a `.rsp` reference file.
+/// Runs the full HQC-KEM KAT suite against the reference `.rsp` files, for
+/// **every** parameter set.
 ///
 /// Reproduces the sequential PRNG draw order from `PQCgenKAT_kem.c`:
 /// `prng_init(seed)` once per vector, then `crypto_kem_keypair`
 /// followed by `crypto_kem_enc` on the *same* PRNG stream, matching
 /// the KAT generator exactly.
+///
+/// This is the acceptance test for runtime parameter selection: it fails if
+/// any module still computes an HQC-1 size while running as HQC-3 or HQC-5.
+/// It links no C.
 #[test]
 fn test_hqc_kem_kat_vectors() {
-    let path = format!("kats/ref/hqc-1/PQCkemKAT_{}.rsp", CRYPTO_SECRETKEYBYTES);
-    let vectors =
-        parse_kat_file(&path).unwrap_or_else(|e| panic!("failed to read KAT file {}: {}", path, e));
+    for set in HqcParameterSet::ALL {
+        let p = set.params();
 
-    assert!(!vectors.is_empty(), "KAT file contained no vectors");
-    // assert!(vectors.len() == 100, "KAT file contained too few vectors");
+        // The reference names each file after the decapsulation key size,
+        // which `HqcParameters` supplies directly.
+        let path = format!(
+            "{}/kats/ref/hqc-{}/PQCkemKAT_{}.rsp",
+            env!("CARGO_MANIFEST_DIR"),
+            set.nist_level(),
+            p.dk_bytes
+        );
+        let vectors = parse_kat_file(&path)
+            .unwrap_or_else(|e| panic!("failed to read KAT file {}: {}", path, e));
 
-    for v in &vectors {
-        // Single PRNG stream reused for both keypair and enc, as in the C KAT driver
-        let mut reader = prng_init(&v.seed, &[]);
+        assert!(!vectors.is_empty(), "{}: KAT file contained no vectors", set.name());
 
-        // 1. Keypair generation
-        let (pk, sk) = crypto_kem_keypair(&mut reader);
-        assert_eq!(pk, v.pk, "pk mismatch at count = {}", v.count);
-        assert_eq!(sk, v.sk, "sk mismatch at count = {}", v.count);
+        for v in &vectors {
+            // Single PRNG stream reused for both keypair and enc, as in the C KAT driver
+            let mut reader = prng_init(&v.seed, &[]);
 
-        // 2. Encapsulation (continues the same PRNG stream)
-        let (ct, ss) = crypto_kem_enc(&mut reader, &pk);
-        assert_eq!(ct, v.ct, "ct mismatch at count = {}", v.count);
-        assert_eq!(ss, v.ss, "ss mismatch at count = {}", v.count);
+            // 1. Keypair generation
+            let (pk, sk) = crypto_kem_keypair(p, &mut reader);
+            assert_eq!(pk, v.pk, "{}: pk mismatch at count = {}", set.name(), v.count);
+            assert_eq!(sk, v.sk, "{}: sk mismatch at count = {}", set.name(), v.count);
 
-        // 3. Decapsulation (deterministic, no PRNG involved)
-        let ss1 = crypto_kem_dec(&ct, &sk);
-        assert_eq!(ss1, ss, "decapsulated ss mismatch at count = {}", v.count);
+            // 2. Encapsulation (continues the same PRNG stream)
+            let (ct, ss) = crypto_kem_enc(p, &mut reader, &pk);
+            assert_eq!(ct, v.ct, "{}: ct mismatch at count = {}", set.name(), v.count);
+            assert_eq!(ss, v.ss, "{}: ss mismatch at count = {}", set.name(), v.count);
+
+            // 3. Decapsulation (deterministic, no PRNG involved)
+            let ss1 = crypto_kem_dec(p, &ct, &sk);
+            assert_eq!(ss1, ss, "{}: decapsulated ss mismatch at count = {}", set.name(), v.count);
+        }
     }
 }

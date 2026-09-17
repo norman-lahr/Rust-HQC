@@ -1,9 +1,6 @@
-use crate::code::reed_muller::{RmCodeword, RmExpandedCdw, MULTIPLICITY};
+use crate::code::reed_muller::{RmCodeword, RmExpandedCdw};
 use crate::code::reed_solomon::gf_mod;
-use crate::parameters::{
-    PARAM_DELTA, PARAM_FFT, PARAM_GF_MUL_ORDER, PARAM_N1, VEC_K_SIZE_64, VEC_N1N2_SIZE_64,
-    VEC_N1_SIZE_64, VEC_N_SIZE_BYTES,
-};
+use crate::parameters::{HQC_1, PARAM_GF_MUL_ORDER};
 use rand::prelude::*;
 use rand::{rngs::StdRng, SeedableRng};
 
@@ -26,7 +23,7 @@ pub fn hadamard_ref(src: &mut RmExpandedCdw, dst: &mut RmExpandedCdw) {
 }
 
 /// Safe wrapper around the C `expand_and_sum` function.
-pub fn expand_and_sum_ref(dest: &mut RmExpandedCdw, src: &[RmCodeword; MULTIPLICITY]) {
+pub fn expand_and_sum_ref(p: &crate::parameters::HqcParameters, dest: &mut RmExpandedCdw, src: &[RmCodeword]) {
     unsafe {
         expand_and_sum(dest as *mut RmExpandedCdw, src.as_ptr());
     }
@@ -38,8 +35,8 @@ pub fn find_peaks_ref(transform: &mut RmExpandedCdw) -> i32 {
 }
 
 /// Safe wrapper around the C `reed_muller_encode` function.
-pub fn reed_muller_encode_ref(msg: &[u64; VEC_N1_SIZE_64]) -> [u64; VEC_N1N2_SIZE_64] {
-    let mut cdw = [0u64; VEC_N1N2_SIZE_64];
+pub fn reed_muller_encode_ref(p: &crate::parameters::HqcParameters, msg: &[u64]) -> Vec<u64> {
+    let mut cdw = vec![0u64; p.vec_n1n2_size_64];
     unsafe {
         reed_muller_encode(cdw.as_mut_ptr(), msg.as_ptr());
     }
@@ -47,8 +44,8 @@ pub fn reed_muller_encode_ref(msg: &[u64; VEC_N1_SIZE_64]) -> [u64; VEC_N1N2_SIZ
 }
 
 /// Safe wrapper around the C `reed_muller_decode` function.
-pub fn reed_muller_decode_ref(cdw: &[u64; VEC_N1N2_SIZE_64]) -> [u64; VEC_N1_SIZE_64] {
-    let mut msg = [0u64; VEC_N1_SIZE_64];
+pub fn reed_muller_decode_ref(p: &crate::parameters::HqcParameters, cdw: &[u64]) -> Vec<u64> {
+    let mut msg = vec![0u64; p.vec_n1_size_64];
     unsafe {
         reed_muller_decode(msg.as_mut_ptr(), cdw.as_ptr());
     }
@@ -61,8 +58,8 @@ pub fn reed_muller_decode_ref(cdw: &[u64; VEC_N1N2_SIZE_64]) -> [u64; VEC_N1_SIZ
 // }
 
 /// Safe wrapper around the C `reed_solomon_encode` function.
-pub fn reed_solomon_encode_ref(msg: &[u64]) -> Vec<u64> {
-    let mut cdw = vec![0u64; VEC_N1_SIZE_64];
+pub fn reed_solomon_encode_ref(p: &crate::parameters::HqcParameters, msg: &[u64]) -> Vec<u64> {
+    let mut cdw = vec![0u64; p.vec_n1_size_64];
     unsafe {
         reed_solomon_encode(cdw.as_mut_ptr(), msg.as_ptr());
     }
@@ -70,9 +67,9 @@ pub fn reed_solomon_encode_ref(msg: &[u64]) -> Vec<u64> {
 }
 
 /// Safe wrapper around the C `compute_syndromes` function.
-pub fn compute_syndromes_ref(cdw: &[u8]) -> [u16; 2 * PARAM_DELTA] {
+pub fn compute_syndromes_ref(p: &crate::parameters::HqcParameters, cdw: &[u8]) -> Vec<u16> {
     let mut cdw_copy = cdw.to_vec(); // C signature takes non-const uint8_t*
-    let mut syndromes = [0u16; 2 * PARAM_DELTA];
+    let mut syndromes = vec![0u16; 2 * p.delta];
     unsafe {
         compute_syndromes(syndromes.as_mut_ptr(), cdw_copy.as_mut_ptr());
     }
@@ -80,8 +77,8 @@ pub fn compute_syndromes_ref(cdw: &[u8]) -> [u16; 2 * PARAM_DELTA] {
 }
 
 /// Safe wrapper around the C `compute_elp` function.
-pub fn compute_elp_ref(syndromes: &[u16]) -> ([u16; PARAM_DELTA + 1], u16) {
-    let mut sigma = [0u16; PARAM_DELTA + 1];
+pub fn compute_elp_ref(p: &crate::parameters::HqcParameters, syndromes: &[u16]) -> (Vec<u16>, u16) {
+    let mut sigma = vec![0u16; p.delta + 1];
     let deg_sigma = unsafe { compute_elp(sigma.as_mut_ptr(), syndromes.as_ptr()) };
     (sigma, deg_sigma)
 }
@@ -97,8 +94,8 @@ pub fn compute_roots_ref(sigma: &[u16], error_len: usize) -> Vec<u8> {
 }
 
 /// Safe wrapper around the C `compute_z_poly` function.
-pub fn compute_z_poly_ref(sigma: &[u16], degree: u16, syndromes: &[u16]) -> [u16; PARAM_DELTA + 1] {
-    let mut z = [0u16; PARAM_DELTA + 1];
+pub fn compute_z_poly_ref(p: &crate::parameters::HqcParameters, sigma: &[u16], degree: u16, syndromes: &[u16]) -> Vec<u16> {
+    let mut z = vec![0u16; p.delta + 1];
     unsafe {
         compute_z_poly(z.as_mut_ptr(), sigma.as_ptr(), degree, syndromes.as_ptr());
     }
@@ -106,8 +103,8 @@ pub fn compute_z_poly_ref(sigma: &[u16], degree: u16, syndromes: &[u16]) -> [u16
 }
 
 /// Safe wrapper around the C `compute_error_values` function.
-pub fn compute_error_values_ref(z: &[u16], error: &[u8]) -> Vec<u16> {
-    let mut error_values = vec![0u16; PARAM_N1];
+pub fn compute_error_values_ref(p: &crate::parameters::HqcParameters, z: &[u16], error: &[u8]) -> Vec<u16> {
+    let mut error_values = vec![0u16; p.n1];
     unsafe {
         compute_error_values(error_values.as_mut_ptr(), z.as_ptr(), error.as_ptr());
     }
@@ -124,9 +121,9 @@ pub fn correct_errors_ref(cdw: &[u8], error_values: &[u16]) -> Vec<u8> {
 }
 
 /// Safe wrapper around the C `reed_solomon_decode` function.
-pub fn reed_solomon_decode_ref(cdw: &[u64]) -> Vec<u64> {
+pub fn reed_solomon_decode_ref(p: &crate::parameters::HqcParameters, cdw: &[u64]) -> Vec<u64> {
     let mut cdw_copy = cdw.to_vec(); // C signature takes non-const uint64_t*
-    let mut msg = vec![0u64; VEC_K_SIZE_64];
+    let mut msg = vec![0u64; p.vec_k_size_64];
     unsafe {
         reed_solomon_decode(msg.as_mut_ptr(), cdw_copy.as_mut_ptr());
     }
@@ -134,8 +131,8 @@ pub fn reed_solomon_decode_ref(cdw: &[u64]) -> Vec<u64> {
 }
 
 /// Safe wrapper around the C `code_encode` function.
-pub fn code_encode_ref(m: &[u64]) -> Vec<u64> {
-    let mut em = vec![0u64; VEC_N1N2_SIZE_64];
+pub fn code_encode_ref(p: &crate::parameters::HqcParameters, m: &[u64]) -> Vec<u64> {
+    let mut em = vec![0u64; p.vec_n1n2_size_64];
     unsafe {
         code_encode(em.as_mut_ptr(), m.as_ptr());
     }
@@ -143,8 +140,8 @@ pub fn code_encode_ref(m: &[u64]) -> Vec<u64> {
 }
 
 /// Safe wrapper around the C `code_decode` function.
-pub fn code_decode_ref(em: &[u64]) -> Vec<u64> {
-    let mut m = vec![0u64; VEC_K_SIZE_64];
+pub fn code_decode_ref(p: &crate::parameters::HqcParameters, em: &[u64]) -> Vec<u64> {
+    let mut m = vec![0u64; p.vec_k_size_64];
     unsafe {
         code_decode(m.as_mut_ptr(), em.as_ptr());
     }
@@ -153,6 +150,7 @@ pub fn code_decode_ref(em: &[u64]) -> Vec<u64> {
 
 #[test]
 fn test_rm_encode() {
+    let p = &HQC_1;
     let mut rng = StdRng::seed_from_u64(4);
     const TEST_ROUNDS: u32 = 100;
     for _i in 0..=TEST_ROUNDS {
@@ -169,6 +167,7 @@ fn test_rm_encode() {
 
 #[test]
 fn test_hadamard() {
+    let p = &HQC_1;
     let mut src = [0i16; 128];
     let mut src_ref = [0i16; 128];
     for i in 0..128 {
@@ -189,15 +188,16 @@ fn test_hadamard() {
 
 #[test]
 fn test_expand_and_sum() {
-    let mut src = [RmCodeword::zeroed(); MULTIPLICITY];
-    for i in 0..MULTIPLICITY {
+    let p = &HQC_1;
+    let mut src = vec![RmCodeword::zeroed(); p.multiplicity];
+    for i in 0..p.multiplicity {
         src[i].u32 = [0xDEADBEEFu32; 4];
     }
     let mut dest = [0i16; 128];
     let mut dest_ref = [0i16; 128];
 
     crate::code::reed_muller::expand_and_sum(&mut dest, &src);
-    expand_and_sum_ref(&mut dest_ref, &src);
+    expand_and_sum_ref(p, &mut dest_ref, &src);
 
     assert_eq!(
         dest, dest_ref,
@@ -207,6 +207,7 @@ fn test_expand_and_sum() {
 
 #[test]
 fn test_find_peaks() {
+    let p = &HQC_1;
     const TEST_ROUNDS: u64 = 100;
     let mut rng = StdRng::seed_from_u64(4u64);
 
@@ -226,14 +227,15 @@ fn test_find_peaks() {
 
 #[test]
 fn test_reed_muller_encode() {
+    let p = &HQC_1;
     const TEST_ROUNDS: u64 = 100;
     let mut rng = StdRng::seed_from_u64(4u64);
 
     for i in 0..TEST_ROUNDS {
-        let msg: [u64; VEC_N1_SIZE_64] = std::array::from_fn(|_| rng.random_range(0..=u64::MAX));
+        let msg: Vec<u64> = (0..p.vec_n1_size_64).map(|_| rng.random_range(0..=u64::MAX)).collect();
 
-        let cdw = crate::code::reed_muller::reed_muller_encode(&msg);
-        let cdw_ref = reed_muller_encode_ref(&msg);
+        let cdw = crate::code::reed_muller::reed_muller_encode(p, &msg);
+        let cdw_ref = reed_muller_encode_ref(p, &msg);
 
         assert_eq!(cdw, cdw_ref, "Rust and C must agree at iteration {}", i);
     }
@@ -241,14 +243,15 @@ fn test_reed_muller_encode() {
 
 #[test]
 fn test_reed_muller_decode() {
+    let p = &HQC_1;
     const TEST_ROUNDS: u64 = 100;
     let mut rng = StdRng::seed_from_u64(4u64);
     for i in 0..TEST_ROUNDS {
-        let msg: [u64; VEC_N1_SIZE_64] = std::array::from_fn(|_| rng.random_range(0..=u64::MAX));
-        let cdw = crate::code::reed_muller::reed_muller_encode(&msg);
+        let msg: Vec<u64> = (0..p.vec_n1_size_64).map(|_| rng.random_range(0..=u64::MAX)).collect();
+        let cdw = crate::code::reed_muller::reed_muller_encode(p, &msg);
 
-        let decoded = crate::code::reed_muller::reed_muller_decode(&cdw);
-        let decoded_ref = reed_muller_decode_ref(&cdw);
+        let decoded = crate::code::reed_muller::reed_muller_decode(p, &cdw);
+        let decoded_ref = reed_muller_decode_ref(p, &cdw);
 
         assert_eq!(
             decoded, decoded_ref,
@@ -260,6 +263,7 @@ fn test_reed_muller_decode() {
 
 #[test]
 fn test_gf_mod() {
+    let p = &HQC_1;
     let modulus = PARAM_GF_MUL_ORDER as u16;
     for i in 0..(2 * modulus) {
         let r = crate::code::reed_solomon::gf_mod(i, modulus);
@@ -274,12 +278,13 @@ fn test_gf_mod() {
 
 #[test]
 fn test_reed_solomon_encode() {
+    let p = &HQC_1;
     let mut rng = StdRng::seed_from_u64(4u64);
     const TEST_ROUNDS: u64 = 100;
     for i in 0..TEST_ROUNDS {
-        let msg: [u64; VEC_K_SIZE_64] = std::array::from_fn(|_| rng.random_range(0..=u64::MAX));
-        let cdw = crate::code::reed_solomon::reed_solomon_encode(&msg);
-        let cdw_ref = reed_solomon_encode_ref(&msg);
+        let msg: Vec<u64> = (0..p.vec_k_size_64).map(|_| rng.random_range(0..=u64::MAX)).collect();
+        let cdw = crate::code::reed_solomon::reed_solomon_encode(p, &msg);
+        let cdw_ref = reed_solomon_encode_ref(p, &msg);
 
         assert_eq!(cdw, cdw_ref, "Rust and C must agree at iteration {}", i);
     }
@@ -287,18 +292,18 @@ fn test_reed_solomon_encode() {
 
 #[test]
 fn test_compute_syndrome() {
+    let p = &HQC_1;
     let mut rng = StdRng::seed_from_u64(4u64);
     const TEST_ROUNDS: u64 = 100;
     for i in 0..TEST_ROUNDS {
-        let cdw: Vec<u8> = (0..PARAM_N1)
+        let cdw: Vec<u8> = (0..p.n1)
             .map(|_| rng.random_range(0..=u8::MAX))
             .collect();
 
-        let syndromes = crate::code::reed_solomon::compute_syndromes(&cdw);
-        let syndromes_ref = compute_syndromes_ref(&cdw);
+        let syndromes = crate::code::reed_solomon::compute_syndromes(p, &cdw);
+        let syndromes_ref = compute_syndromes_ref(p, &cdw);
 
-        assert_eq!(
-            syndromes, syndromes_ref,
+        assert_eq!(syndromes.as_slice(), syndromes_ref.as_slice(),
             "Rust and C must agree at iteration {}",
             i
         );
@@ -307,34 +312,36 @@ fn test_compute_syndrome() {
 
 #[test]
 fn test_compute_elp() {
+    let p = &HQC_1;
     let mut rng = StdRng::seed_from_u64(4u64);
     const TEST_ROUNDS: u64 = 100;
     for i in 0..TEST_ROUNDS {
-        let syndromes: Vec<u16> = (0..2 * PARAM_DELTA)
+        let syndromes: Vec<u16> = (0..2 * p.delta)
             .map(|_| rng.random_range(0..=u16::MAX))
             .collect();
 
-        let (sigma, deg) = crate::code::reed_solomon::compute_elp(&syndromes);
-        let (sigma_ref, deg_ref) = compute_elp_ref(&syndromes);
+        let (sigma, deg) = crate::code::reed_solomon::compute_elp(p, &syndromes);
+        let (sigma_ref, deg_ref) = compute_elp_ref(p, &syndromes);
 
-        assert_eq!(sigma, sigma_ref, "sigma mismatch at iteration {}", i);
+        assert_eq!(sigma.as_slice(), sigma_ref.as_slice(), "sigma mismatch at iteration {}", i);
         assert_eq!(deg, deg_ref, "deg_sigma mismatch at iteration {}", i);
     }
 }
 
 #[test]
 fn test_compute_roots() {
+    let p = &HQC_1;
     let mut rng = StdRng::seed_from_u64(4u64);
     const TEST_ROUNDS: u64 = 100;
-    let error_len = VEC_N_SIZE_BYTES;
+    let error_len = p.vec_n_size_bytes;
 
     for i in 0..TEST_ROUNDS {
-        let sigma: Vec<u16> = (0..(1usize << PARAM_FFT))
+        let sigma: Vec<u16> = (0..(1usize << p.fft_exp))
             .map(|_| rng.random_range(0..=u16::MAX))
             .collect();
 
         let mut error_rs = vec![0u8; error_len];
-        crate::code::reed_solomon::compute_roots(&mut error_rs, &sigma);
+        crate::code::reed_solomon::compute_roots(p, &mut error_rs, &sigma);
 
         let error_ref = compute_roots_ref(&sigma, error_len);
 
@@ -348,57 +355,60 @@ fn test_compute_roots() {
 
 #[test]
 fn test_compute_z_poly() {
+    let p = &HQC_1;
     const TEST_ROUNDS: u64 = 100;
     let mut rng = StdRng::seed_from_u64(4u64);
     for i in 0..TEST_ROUNDS {
-        let sigma: Vec<u16> = (0..(1usize << PARAM_FFT))
+        let sigma: Vec<u16> = (0..(1usize << p.fft_exp))
             .map(|_| rng.random_range(0..=u16::MAX))
             .collect();
-        let syndromes: Vec<u16> = (0..2 * PARAM_DELTA)
+        let syndromes: Vec<u16> = (0..2 * p.delta)
             .map(|_| rng.random_range(0..=u16::MAX))
             .collect();
-        let degree: u16 = rng.random_range(0..=PARAM_DELTA as u16);
+        let degree: u16 = rng.random_range(0..=p.delta as u16);
 
-        let z = crate::code::reed_solomon::compute_z_poly(&sigma, degree, &syndromes);
-        let z_ref = compute_z_poly_ref(&sigma, degree, &syndromes);
+        let z = crate::code::reed_solomon::compute_z_poly(p, &sigma, degree, &syndromes);
+        let z_ref = compute_z_poly_ref(p, &sigma, degree, &syndromes);
 
-        assert_eq!(z, z_ref, "Rust and C must agree at iteration {}", i);
+        assert_eq!(z.as_slice(), z_ref.as_slice(), "Rust and C must agree at iteration {}", i);
     }
 }
 
 #[test]
 fn test_compute_error_values() {
+    let p = &HQC_1;
     const TEST_ROUNDS: u64 = 100;
     let mut rng = StdRng::seed_from_u64(4u64);
     for i in 0..TEST_ROUNDS {
-        let z: Vec<u16> = (0..PARAM_DELTA + 1)
+        let z: Vec<u16> = (0..p.delta + 1)
             .map(|_| rng.random_range(0..=u16::MAX))
             .collect();
-        let error: Vec<u8> = (0..PARAM_N1)
+        let error: Vec<u8> = (0..p.n1)
             .map(|_| rng.random_range(0..=u8::MAX))
             .collect();
 
-        let ev = crate::code::reed_solomon::compute_error_values(&z, &error);
-        let ev_ref = compute_error_values_ref(&z, &error);
+        let ev = crate::code::reed_solomon::compute_error_values(p, &z, &error);
+        let ev_ref = compute_error_values_ref(p, &z, &error);
 
-        assert_eq!(ev, ev_ref, "Rust and C must agree at iteration {}", i);
+        assert_eq!(ev.as_slice(), ev_ref.as_slice(), "Rust and C must agree at iteration {}", i);
     }
 }
 
 #[test]
 fn test_correct_errors() {
+    let p = &HQC_1;
     const TEST_ROUNDS: u64 = 100;
     let mut rng = StdRng::seed_from_u64(4u64);
     for i in 0..TEST_ROUNDS {
-        let cdw: Vec<u8> = (0..PARAM_N1)
+        let cdw: Vec<u8> = (0..p.n1)
             .map(|_| rng.random_range(0..=u8::MAX))
             .collect();
-        let error_values: Vec<u16> = (0..PARAM_N1)
+        let error_values: Vec<u16> = (0..p.n1)
             .map(|_| rng.random_range(0..=u16::MAX))
             .collect();
 
         let mut cdw_rs = cdw.clone();
-        crate::code::reed_solomon::correct_errors(&mut cdw_rs, &error_values);
+        crate::code::reed_solomon::correct_errors(p, &mut cdw_rs, &error_values);
 
         let cdw_ref = correct_errors_ref(&cdw, &error_values);
 
@@ -408,14 +418,15 @@ fn test_correct_errors() {
 
 #[test]
 fn test_reed_solomon_decode() {
+    let p = &HQC_1;
     const TEST_ROUNDS: u64 = 100;
     let mut rng = StdRng::seed_from_u64(4u64);
     for i in 0..TEST_ROUNDS {
-        let msg_in: [u64; VEC_K_SIZE_64] = std::array::from_fn(|_| rng.random_range(0..=u64::MAX));
-        let cdw = crate::code::reed_solomon::reed_solomon_encode(&msg_in);
+        let msg_in: Vec<u64> = (0..p.vec_k_size_64).map(|_| rng.random_range(0..=u64::MAX)).collect();
+        let cdw = crate::code::reed_solomon::reed_solomon_encode(p, &msg_in);
 
-        let msg_rs = crate::code::reed_solomon::reed_solomon_decode(&cdw);
-        let msg_ref = reed_solomon_decode_ref(&cdw);
+        let msg_rs = crate::code::reed_solomon::reed_solomon_decode(p, &cdw);
+        let msg_ref = reed_solomon_decode_ref(p, &cdw);
 
         assert_eq!(msg_rs, msg_ref, "Rust and C must agree at iteration {}", i);
     }
@@ -423,13 +434,14 @@ fn test_reed_solomon_decode() {
 
 #[test]
 fn test_code_encode() {
+    let p = &HQC_1;
     const TEST_ROUNDS: u64 = 100;
     let mut rng = StdRng::seed_from_u64(4u64);
     for i in 0..TEST_ROUNDS {
-        let m: [u64; VEC_K_SIZE_64] = std::array::from_fn(|_| rng.random_range(0..=u64::MAX));
+        let m: Vec<u64> = (0..p.vec_k_size_64).map(|_| rng.random_range(0..=u64::MAX)).collect();
 
-        let em = crate::code::code_encode(&m);
-        let em_ref = code_encode_ref(&m);
+        let em = crate::code::code_encode(p, &m);
+        let em_ref = code_encode_ref(p, &m);
 
         assert_eq!(em, em_ref, "Rust and C must agree at iteration {}", i);
     }
@@ -437,14 +449,15 @@ fn test_code_encode() {
 
 #[test]
 fn test_code_decode() {
+    let p = &HQC_1;
     const TEST_ROUNDS: u64 = 100;
     let mut rng = StdRng::seed_from_u64(4u64);
     for i in 0..TEST_ROUNDS {
-        let m_in: [u64; VEC_K_SIZE_64] = std::array::from_fn(|_| rng.random_range(0..=u64::MAX));
-        let em = crate::code::code_encode(&m_in);
+        let m_in: Vec<u64> = (0..p.vec_k_size_64).map(|_| rng.random_range(0..=u64::MAX)).collect();
+        let em = crate::code::code_encode(p, &m_in);
 
-        let m = crate::code::code_decode(&em);
-        let m_ref = code_decode_ref(&em);
+        let m = crate::code::code_decode(p, &em);
+        let m_ref = code_decode_ref(p, &em);
 
         assert_eq!(m, m_ref, "Rust and C must agree at iteration {}", i);
     }

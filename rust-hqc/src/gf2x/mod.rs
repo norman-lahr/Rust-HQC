@@ -4,7 +4,13 @@ use crate::parameters::*;
 const KARATSUBA_THRESHOLD: usize = 16;
 
 /// Total size in 64-bit words for the temporary buffer used by recursive Karatsuba.
-const TMP_BUFFER_WORDS: usize = 16 * VEC_N_SIZE_64;
+/// Karatsuba scratch, in 64-bit words.
+///
+/// Sixteen times the operand size, matching the C reference. At HQC-5 that is
+/// 14416 words (115 kB), which is why it stays on the heap.
+const fn tmp_buffer_words(p: &HqcParameters) -> usize {
+    16 * p.vec_n_size_64
+}
 
 /// Schoolbook multiplication over GF(2).
 ///
@@ -132,44 +138,52 @@ pub fn karatsuba_mul(r: &mut [u64], a: &[u64], b: &[u64], n: usize, tmp_buffer: 
 /// and masks any excess bits in the last word.
 ///
 /// # Arguments
-/// * `o` - Result buffer of `VEC_N_SIZE_64` 64-bit words.
-/// * `a` - Input buffer of `2 * VEC_N_SIZE_64` 64-bit words.
-pub fn reduce(o: &mut [u64; VEC_N_SIZE_64], a: &[u64]) {
+/// * `p` - Parameter set.
+/// * `o` - Result buffer of `p.vec_n_size_64` 64-bit words.
+/// * `a` - Input buffer of `2 * p.vec_n_size_64` 64-bit words.
+pub fn reduce(p: &HqcParameters, o: &mut [u64], a: &[u64]) {
+    assert_eq!(o.len(), p.vec_n_size_64, "output must have p.vec_n_size_64 words");
     assert_eq!(
         a.len(),
-        2 * VEC_N_SIZE_64,
-        "input must have length 2 * VEC_N_SIZE_64"
+        2 * p.vec_n_size_64,
+        "input must have 2 * p.vec_n_size_64 words"
     );
 
-    for i in 0..VEC_N_SIZE_64 {
-        let r = a[i + VEC_N_SIZE_64 - 1] >> (PARAM_N & 0x3F);
-        let carry = a[i + VEC_N_SIZE_64] << (64 - (PARAM_N & 0x3F));
+    let shift = p.top_word_bits();
+    for i in 0..p.vec_n_size_64 {
+        let r = a[i + p.vec_n_size_64 - 1] >> shift;
+        // `64 - shift` is well defined: `top_word_bits` is never 0 because
+        // every parameter set has n % 64 != 0, asserted in parameters.rs.
+        let carry = a[i + p.vec_n_size_64] << (64 - shift);
         o[i] = a[i] ^ r ^ carry;
     }
 
-    // Mask off bits beyond PARAM_N in the last word
-    o[VEC_N_SIZE_64 - 1] &= bitmask(PARAM_N, 64);
+    // Mask off bits beyond n in the last word
+    o[p.vec_n_size_64 - 1] &= p.top_word_mask();
 }
 
-/// Carry-less multiplication mod (X^PARAM_N - 1).
+/// Carry-less multiplication mod (X^n - 1).
 ///
-/// Computes `o = a1 * a2` over GF(2) mod (X^PARAM_N - 1).
+/// Computes `o = a1 * a2` over GF(2) mod (X^n - 1).
 ///
 /// # Arguments
-/// * `a1` - Operand polynomial a(x) of `VEC_N_SIZE_64` 64-bit words.
-/// * `a2` - Operand polynomial b(x) of `VEC_N_SIZE_64` 64-bit words.
+/// * `p`  - Parameter set.
+/// * `a1` - Operand polynomial a(x) of `p.vec_n_size_64` 64-bit words.
+/// * `a2` - Operand polynomial b(x) of `p.vec_n_size_64` 64-bit words.
 ///
 /// # Returns
-/// Result of `VEC_N_SIZE_64` 64-bit words.
-pub fn vect_mul(a1: &[u64; VEC_N_SIZE_64], a2: &[u64; VEC_N_SIZE_64]) -> [u64; VEC_N_SIZE_64] {
+/// Result of `p.vec_n_size_64` 64-bit words.
+pub fn vect_mul(p: &HqcParameters, a1: &[u64], a2: &[u64]) -> Vec<u64> {
+    assert_eq!(a1.len(), p.vec_n_size_64);
+    assert_eq!(a2.len(), p.vec_n_size_64);
     // Step 1: Multiply via Karatsuba into unreduced buffer
-    let mut unreduced = vec![0u64; 2 * VEC_N_SIZE_64];
-    let mut tmp_buffer = vec![0u64; TMP_BUFFER_WORDS];
-    karatsuba_mul(&mut unreduced, a1, a2, VEC_N_SIZE_64, &mut tmp_buffer);
+    let mut unreduced = vec![0u64; 2 * p.vec_n_size_64];
+    let mut tmp_buffer = vec![0u64; tmp_buffer_words(p)];
+    karatsuba_mul(&mut unreduced, a1, a2, p.vec_n_size_64, &mut tmp_buffer);
 
-    // Step 2: Reduce modulo X^PARAM_N - 1
-    let mut o = [0u64; VEC_N_SIZE_64];
-    reduce(&mut o, &unreduced);
+    // Step 2: Reduce modulo X^n - 1
+    let mut o = p.zero_vec_n();
+    reduce(p, &mut o, &unreduced);
     o
 }
 

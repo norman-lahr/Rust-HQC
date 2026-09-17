@@ -47,10 +47,6 @@ pub type RmExpandedCdw = [i16; 128];
 
 /// Number of repeated 128-bit codeword blocks.
 ///
-/// Calculates the ceiling of `PARAM_N2 / 128` to determine how many
-/// copies of each 128-bit codeword are used in the code expansion.
-pub const MULTIPLICITY: usize = PARAM_N2.div_ceil(128);
-
 /// Broadcasts the least significant bit of `x` to a 32-bit mask.
 ///
 /// Returns `0xFFFFFFFF` (all ones)  if `x & 1 == 1`
@@ -219,31 +215,32 @@ pub fn find_peaks(transform: &RmExpandedCdw) -> i32 {
 
 /// Encodes the received word using Reed-Muller encoding.
 ///
-/// Each of the `VEC_N1_SIZE_BYTES` message bytes is encoded into
-/// `MULTIPLICITY` repeated 128-bit RM(1,7) codewords.
+/// Each of the `p.vec_n1_size_bytes` message bytes is encoded into
+/// `p.multiplicity` repeated 128-bit RM(1,7) codewords.
 ///
 /// # Arguments
-/// * `msg` - Input message of `VEC_N1_SIZE_64` 64-bit words.
+/// * `msg` - Input message of `p.vec_n1_size_64` 64-bit words.
 ///
 /// # Returns
-/// Encoded codeword array of `VEC_N1N2_SIZE_64` 64-bit words.
-pub fn reed_muller_encode(msg: &[u64; VEC_N1_SIZE_64]) -> [u64; VEC_N1N2_SIZE_64] {
-    let mut output = [0u64; VEC_N1N2_SIZE_64];
+/// Encoded codeword array of `p.vec_n1n2_size_64` 64-bit words.
+pub fn reed_muller_encode(p: &HqcParameters, msg: &[u64]) -> Vec<u64> {
+    assert_eq!(msg.len(), p.vec_n1_size_64);
+    let mut output = p.zero_vec_n1n2();
 
     for (word_idx, &word) in msg.iter().enumerate() {
         for byte_idx in 0..8usize {
             let i = word_idx * 8 + byte_idx;
-            if i >= VEC_N1_SIZE_BYTES {
+            if i >= p.vec_n1_size_bytes {
                 break;
             }
 
             // Extract byte in little-endian order
             let byte = (word >> (byte_idx * 8)) as u8;
 
-            // Encode and write MULTIPLICITY copies directly into output
+            // Encode and write p.multiplicity copies directly into output
             let codeword = encode(byte as i32);
-            for copy in 0..MULTIPLICITY {
-                let pos = (i * MULTIPLICITY + copy) * 2;
+            for copy in 0..p.multiplicity {
+                let pos = (i * p.multiplicity + copy) * 2;
                 for (j, &w32) in codeword.u32.iter().enumerate() {
                     output[pos + j / 2] |= (w32 as u64) << ((j % 2) * 32);
                 }
@@ -254,14 +251,15 @@ pub fn reed_muller_encode(msg: &[u64; VEC_N1_SIZE_64]) -> [u64; VEC_N1N2_SIZE_64
     output
 }
 
-pub fn reed_muller_decode(cdw: &[u64; VEC_N1N2_SIZE_64]) -> [u64; VEC_N1_SIZE_64] {
-    let mut output = [0u64; VEC_N1_SIZE_64];
+pub fn reed_muller_decode(p: &HqcParameters, cdw: &[u64]) -> Vec<u64> {
+    assert_eq!(cdw.len(), p.vec_n1n2_size_64);
+    let mut output = p.zero_vec_n1();
 
-    for i in 0..VEC_N1_SIZE_BYTES {
-        // Extract MULTIPLICITY codewords starting at i * MULTIPLICITY
-        let pos = i * MULTIPLICITY * 2;
-        let mut src = [RmCodeword::zeroed(); MULTIPLICITY];
-        for copy in 0..MULTIPLICITY {
+    for i in 0..p.vec_n1_size_bytes {
+        // Extract p.multiplicity codewords starting at i * p.multiplicity
+        let pos = i * p.multiplicity * 2;
+        let mut src = vec![RmCodeword::zeroed(); p.multiplicity];
+        for copy in 0..p.multiplicity {
             let base = pos + copy * 2;
             src[copy].u32[0] = cdw[base] as u32;
             src[copy].u32[1] = (cdw[base] >> 32) as u32;
@@ -278,7 +276,7 @@ pub fn reed_muller_decode(cdw: &[u64; VEC_N1N2_SIZE_64]) -> [u64; VEC_N1_SIZE_64
         hadamard(&mut expanded, &mut transform);
 
         // Fix the first entry to get the half Hadamard transform
-        transform[0] = transform[0].wrapping_sub((64 * MULTIPLICITY) as i16);
+        transform[0] = transform[0].wrapping_sub((64 * p.multiplicity) as i16);
 
         // Decode and store the byte into output
         let byte = find_peaks(&transform) as u8;

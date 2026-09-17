@@ -1,4 +1,5 @@
-use crate::parameters::{VEC_N1N2_SIZE_64, VEC_N1_SIZE_64};
+use crate::parameters::HqcParameters;
+use zeroize::Zeroizing;
 
 pub mod reed_muller;
 mod reed_solomon;
@@ -9,39 +10,32 @@ mod reed_solomon;
 /// the duplicated Reed-Muller code to obtain the concatenated codeword.
 ///
 /// # Arguments
-/// * `m` - Input message of `VEC_K_SIZE_64` 64-bit words.
+/// * `m` - Input message of `p.vec_k_size_64` 64-bit words.
 ///
 /// # Returns
-/// Encoded codeword of `VEC_N1N2_SIZE_64` 64-bit words.
-pub fn code_encode(m: &[u64]) -> Vec<u64> {
-    let mut tmp: [u64; VEC_N1_SIZE_64] = reed_solomon::reed_solomon_encode(m)
-        .try_into()
-        .expect("reed_solomon_encode must return VEC_N1_SIZE_64 words");
+/// Encoded codeword of `p.vec_n1n2_size_64` 64-bit words.
+pub fn code_encode(p: &HqcParameters, m: &[u64]) -> Vec<u64> {
+    // `tmp` carries the Reed-Solomon codeword of the secret message, so it is
+    // cleared on drop rather than by a hand-rolled loop the optimiser may
+    // elide.
+    let tmp = Zeroizing::new(reed_solomon::reed_solomon_encode(p, m));
+    assert_eq!(tmp.len(), p.vec_n1_size_64);
 
-    let em = reed_muller::reed_muller_encode(&tmp);
-
-    // Zeroize sensitive data
-    tmp.iter_mut().for_each(|w| *w = 0);
-
-    em.to_vec()
+    reed_muller::reed_muller_encode(p, &tmp)
 }
 
 /// Decodes the codeword `em` to a message `m` using the concatenated code.
 ///
 /// # Arguments
-/// * `em` - Codeword of `VEC_N1N2_SIZE_64` 64-bit words.
+/// * `em` - Codeword of `p.vec_n1n2_size_64` 64-bit words.
 ///
 /// # Returns
-/// Decoded message of `VEC_K_SIZE_64` 64-bit words.
-pub fn code_decode(em: &[u64]) -> Vec<u64> {
-    let em_arr: [u64; VEC_N1N2_SIZE_64] =
-        em.try_into().expect("em must have VEC_N1N2_SIZE_64 words");
+/// Decoded message of `p.vec_k_size_64` 64-bit words.
+pub fn code_decode(p: &HqcParameters, em: &[u64]) -> Vec<u64> {
+    assert_eq!(em.len(), p.vec_n1n2_size_64);
 
-    let mut tmp = reed_muller::reed_muller_decode(&em_arr);
-    let m = reed_solomon::reed_solomon_decode(&tmp);
-
-    // Zeroize sensitive data
-    tmp.iter_mut().for_each(|w| *w = 0);
+    let tmp = Zeroizing::new(reed_muller::reed_muller_decode(p, em));
+    let m = reed_solomon::reed_solomon_decode(p, &tmp);
 
     m
 }
