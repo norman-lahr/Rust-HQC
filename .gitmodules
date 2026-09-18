@@ -1,0 +1,4 @@
+[submodule "rust-hqc/third_party/hqc-next-release"]
+	path = rust-hqc/third_party/hqc-next-release
+	url = https://gitlab.com/pqc-hqc/hqc.git
+	branch = next-release
