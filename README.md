@@ -6,7 +6,7 @@ implementation](https://gitlab.com/pqc-hqc/hqc.git) and intended for integration
 into [Botan](https://botan.randombit.net/). The Rust code follows the
 constant-time requirement.
 
-In contrast to the C reference implementation, tThe parameter set, HQC-1, HQC-3,
+In contrast to the C reference implementation, the parameter set, HQC-1, HQC-3,
 or HQC-5, is selected **at run time**. So, one binary library serves all three.
 
 The rust port tracks the specification dated **2025-08-22** (v5.0.0), which uses
